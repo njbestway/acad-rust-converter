@@ -1,0 +1,160 @@
+# GitHub Actions CI for @njbestway/acad-rust-converter.
+#
+# Goal: prove the full Rust -> WebAssembly -> TypeScript -> example chain
+# reproduces green on a clean runner, and lock in the acadrust read regression.
+#
+# Publishing is intentionally NOT automated. Per the repo's locked discipline
+# (see HANDOFF.md §3 / §10.1), `npm publish` is run manually by a maintainer
+# with @njbestway rights, after the golden-value dump + browser smoke pass
+# locally. This workflow only builds and tests; it never touches the registry.
+#
+# Notes / deliberate omissions:
+#   * `cargo fmt` / `cargo clippy` are NOT hard gates. The crate (and its
+#     examples) are not rustfmt- or clippy-clean today, so enforcing them would
+#     fail on pre-existing code unrelated to any given change. They can be
+#     tightened later once the tree is normalized.
+#   * The golden-value regression (acadrust 0.6.6 decoding 高山.dwg to
+#     entityCount 244,756 / modelSpaceEntityCount 2,199) needs a ~16 MB sample
+#     that is deliberately not committed, so it stays a manual pre-release gate
+#     (HANDOFF.md §8). The R12 read test in `rust/tests` is self-contained and
+#     IS run here.
+#   * The TS `__tests__` (worker / parity / register) are not wired into CI: the
+#     package has no test-runner dependency and the parity spec needs fixtures
+#     regenerated from the native dumper. Add a vitest job once a runner and
+#     committed fixtures exist.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel superseded runs on the same branch/PR; keep concurrent runs across
+# the (rare) matrix.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Native Rust regression gate: fast, no toolchain beyond cargo, no wasm-bindgen
+  # needed. Runs the self-contained AC1009 (R12) DWG read test in rust/tests.
+  rust:
+    name: Rust tests (native)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/acad-rust-converter/rust
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/acad-rust-converter/rust
+
+      - name: cargo test
+        run: cargo test --tests
+
+  # Full artifact build: cargo -> wasm32 -> wasm-bindgen -> tsc -> 3x vite, then
+  # the example app (vue-tsc + vite) which consumes the workspace-linked dist/.
+  build:
+    name: Build library + example
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # pnpm is provided from the root package.json `packageManager` field.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Rust toolchain (wasm32 target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo (registry + target)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/acad-rust-converter/rust
+
+      # Derive the required wasm-bindgen version straight from Cargo.toml so the
+      # installed CLI can never drift from the pinned crate (a mismatch aborts
+      # wasm-bindgen with a glue schema error — the historical footgun).
+      - name: Resolve pinned wasm-bindgen version
+        id: wbv
+        run: |
+          ver="$(sed -nE 's/^wasm-bindgen = "=(.*)"/\1/p' packages/acad-rust-converter/rust/Cargo.toml | tr -d '[:space:]')"
+          if [ -z "$ver" ]; then
+            echo "Could not parse the wasm-bindgen pin from Cargo.toml" >&2
+            exit 1
+          fi
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          echo "Pinned wasm-bindgen: $ver"
+
+      - name: Install wasm-bindgen CLI (prebuilt ${{ steps.wbv.outputs.version }})
+        run: |
+          set -euo pipefail
+          ver="${{ steps.wbv.outputs.version }}"
+          tripl="x86_64-unknown-linux-gnu"
+          curl -sSfL \
+            "https://github.com/rustwasm/wasm-bindgen/releases/download/${ver}/wasm-bindgen-${ver}-${tripl}.tar.gz" \
+            | tar xz
+          sudo install -m 0755 "wasm-bindgen-${ver}-${tripl}/wasm-bindgen" /usr/local/bin/wasm-bindgen
+
+      - name: Assert wasm-bindgen CLI matches the crate pin
+        run: |
+          set -euo pipefail
+          want="${{ steps.wbv.outputs.version }}"
+          got="$(wasm-bindgen --version | awk '{print $2}')"
+          if [ "$got" != "$want" ]; then
+            echo "::error::wasm-bindgen CLI is $got but Cargo.toml pins =$want"
+            exit 1
+          fi
+          echo "wasm-bindgen CLI $got OK"
+
+      # build:wasm (cargo + wasm-bindgen) then tsc + the three vite library
+      # bundles; this is exactly what `prepublishOnly` would run.
+      - name: Build the library
+        run: pnpm --filter @njbestway/acad-rust-converter build
+
+      # The example links the library through `workspace:*`, so it needs the
+      # dist/ produced above (viteStaticCopy copies worker + wasm). "Copied 3
+      # items" / "Copied N items" in the log is the success signal.
+      - name: Build the example app
+        run: pnpm --filter cad-viewer-example build
+
+      - name: Verify published dist artifacts exist
+        run: |
+          set -euo pipefail
+          cd packages/acad-rust-converter/dist
+          for f in \
+            acad-rust-converter.js \
+            acad-rust-converter.umd.cjs \
+            acad-rust-parser-worker.js \
+            acad-rust-converter-main-thread.js \
+            acad-rust_bg.wasm; do
+            test -s "$f" || { echo "::error::missing or empty dist/$f"; exit 1; }
+            echo "dist/$f: $(wc -c < "$f") bytes"
+          done
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: acad-rust-converter-dist
+          path: packages/acad-rust-converter/dist
+          if-no-files-found: error
+          retention-days: 7
