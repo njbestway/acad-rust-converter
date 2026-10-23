@@ -1,0 +1,12 @@
+node_modules/
+lib/
+dist/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# Rust / wasm build artifacts (rebuilt by scripts/build-wasm.mjs).
+rust/target/
+wasm/pkg/
+# Offline fixture dumps (regenerate with the `dumper`-feature binary).
+rust/_*
