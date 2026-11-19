@@ -39,6 +39,8 @@ describe('AcDbDatabase compatibility proxies', () => {
       updateCircleArcGeometry: jest.fn().mockResolvedValue(undefined),
       updateEllipseGeometry: jest.fn().mockResolvedValue(undefined),
       updateSplineGeometry: jest.fn().mockResolvedValue(undefined),
+      updateTextGeometry: jest.fn().mockResolvedValue(undefined),
+      updateMTextGeometry: jest.fn().mockResolvedValue(undefined),
       updateInsertPlacement: jest.fn().mockResolvedValue(undefined),
       updateInsertAttributeValue: jest.fn().mockResolvedValue(undefined),
       updateAttdefDefaultValue: jest.fn().mockResolvedValue(undefined),
