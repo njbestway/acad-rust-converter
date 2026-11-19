@@ -263,7 +263,10 @@ pub fn dwg_close(handle: u32) {
         if let Some(Some(_)) = docs.get(handle as usize) {
             docs[handle as usize] = None;
         }
-    })
+    });
+    OPEN_TRANSACTIONS.with(|transactions| {
+        transactions.borrow_mut().remove(&handle);
+    });
 }
 
 /// Bounded summary for progress reporting and pagination math: version, key
@@ -493,8 +496,15 @@ pub fn dwg_abort_transaction(handle: u32) -> Result<(), JsValue> {
 #[wasm_bindgen]
 pub fn dwg_add_entity_json(handle: u32, entity_json: &str) -> Result<String, JsValue> {
     guard(|| {
-        let entity: acadrust::EntityType = serde_json::from_str(entity_json)
+        let mut entity: acadrust::EntityType = serde_json::from_str(entity_json)
             .map_err(to_js("acadrust entity JSON parse failed"))?;
+        if matches!(entity, acadrust::EntityType::Unknown(_)) {
+            return Err(JsValue::from_str(
+                "Adding raw Unknown entities is not supported; preserve existing unknown records in-place.",
+            ));
+        }
+        entity.common_mut().handle = acadrust::types::Handle::NULL;
+        entity.common_mut().owner_handle = acadrust::types::Handle::NULL;
         with_document_mut(handle, |doc| {
             let entity_handle = doc.add_entity(entity).map_err(to_js("acadrust add_entity failed"))?;
             Ok(format!("{:X}", entity_handle.value()))
