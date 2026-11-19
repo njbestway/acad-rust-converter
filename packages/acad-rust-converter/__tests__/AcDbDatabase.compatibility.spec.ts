@@ -33,6 +33,8 @@ describe('AcDbDatabase compatibility proxies', () => {
       updateLineGeometry: jest.fn().mockResolvedValue(undefined),
       updateCircleArcGeometry: jest.fn().mockResolvedValue(undefined),
       updateInsertPlacement: jest.fn().mockResolvedValue(undefined),
+      updateInsertAttributeValue: jest.fn().mockResolvedValue(undefined),
+      updateAttdefDefaultValue: jest.fn().mockResolvedValue(undefined),
       addEntity: jest.fn().mockResolvedValue('2A'),
       addBlockRecord: jest.fn().mockResolvedValue({ name: 'NEW_BLOCK', handle: '40', blockEntityHandle: '41', blockEndHandle: '42' }),
       addEntityToBlock: jest.fn().mockResolvedValue('43'),
@@ -80,6 +82,17 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.updateCircleArcGeometry).toHaveBeenNthCalledWith(
       2, 7, '2A', { startAngle: 0.25, endAngle: 1.5 }
     )
+  })
+
+  it('updates single-line ATTRIB values and ATTDEF defaults through typed APIs', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+
+    await entity.setAttributeValue('PART_NO', 'P-100')
+    await entity.setAttributeDefaultValue('DEFAULT')
+    expect(client.updateInsertAttributeValue).toHaveBeenCalledWith(7, '2A', 'PART_NO', 'P-100')
+    expect(client.updateAttdefDefaultValue).toHaveBeenCalledWith(7, '2A', 'DEFAULT')
   })
 
   it('updates INSERT placement without replacing block or attribute references', async () => {
