@@ -747,7 +747,118 @@ pub fn dwg_update_circle_arc_geometry_json(
     })
 }
 
-/// Update only reference-safe common properties. Geometry and handle-bearing
+//// Create a structurally complete BLOCK definition (BLOCK-RECORD, BLOCK,
+/// ENDBLK) in the resident document. Entity membership remains empty until
+/// dwg_add_entity_to_block_json is called.
+#[wasm_bindgen]
+pub fn dwg_add_block_record_json(
+    handle: u32,
+    name: &str,
+    base_point_json: &str,
+    description: &str,
+) -> Result<String, JsValue> {
+    guard(|| with_document_mut(handle, |doc| {
+        let name = name.trim();
+        if name.is_empty() || name.starts_with('*') {
+            return Err(JsValue::from_str("Block name must be non-empty and cannot start with '*'."));
+        }
+        if doc.block_records.contains(name) {
+            return Err(JsValue::from_str(&format!("Block '{name}' already exists.")));
+        }
+        let point: Point3Patch = serde_json::from_str(base_point_json)
+            .map_err(to_js("block base point parse failed"))?;
+        let base = Vector3::new(point.x, point.y, point.z);
+        let mut record = acadrust::BlockRecord::new(name);
+        record.handle = doc.allocate_handle();
+        record.block_entity_handle = doc.allocate_handle();
+        record.block_end_handle = doc.allocate_handle();
+        record.base_point = base;
+        record.description = description.to_string();
+        let record_handle = record.handle;
+        let block_handle = record.block_entity_handle;
+        let end_handle = record.block_end_handle;
+        doc.block_records.add(record).map_err(to_js("block record insert failed"))?;
+
+        let mut block = acadrust::entities::Block::new(name, base).with_description(description);
+        block.common.handle = block_handle;
+        block.common.owner_handle = record_handle;
+        doc.add_entity(acadrust::EntityType::Block(block))
+            .map_err(to_js("BLOCK marker insert failed"))?;
+
+        let mut end = acadrust::entities::BlockEnd::new();
+        end.common.handle = end_handle;
+        end.common.owner_handle = record_handle;
+        doc.add_entity(acadrust::EntityType::BlockEnd(end))
+            .map_err(to_js("ENDBLK marker insert failed"))?;
+
+        let result = serde_json::json!({
+            "name": name,
+            "handle": format!("{:X}", record_handle.value()),
+            "blockEntityHandle": format!("{:X}", block_handle.value()),
+            "blockEndHandle": format!("{:X}", end_handle.value())
+        });
+        to_json("created block record serialize failed", &result)
+    }))
+}
+
+/// Add an entity to an existing block definition. Setting owner_handle before
+/// CadDocument::add_entity lets acadrust update both flat entity storage and
+/// the BlockRecord.entity_handles membership index atomically.
+#[wasm_bindgen]
+pub fn dwg_add_entity_to_block_json(
+    handle: u32,
+    block_name: &str,
+    entity_json: &str,
+) -> Result<String, JsValue> {
+    guard(|| with_document_mut(handle, |doc| {
+        let record = doc.block_records.get(block_name)
+            .ok_or_else(|| JsValue::from_str(&format!("Block '{block_name}' does not exist.")))?;
+        let owner = record.handle;
+        let mut entity: acadrust::EntityType = serde_json::from_str(entity_json)
+            .map_err(to_js("block entity JSON parse failed"))?;
+        if matches!(
+            entity,
+            acadrust::EntityType::AttributeEntity(_)
+                | acadrust::EntityType::Block(_)
+                | acadrust::EntityType::BlockEnd(_)
+        ) {
+            return Err(JsValue::from_str("AttributeEntity, BLOCK and ENDBLK cannot be appended as ordinary block members."));
+        }
+        entity.common_mut().owner_handle = owner;
+        let added = doc.add_entity(entity).map_err(to_js("block entity append failed"))?;
+        Ok(format!("{:X}", added.value()))
+    }))
+}
+
+/// Delete only an empty, unreferenced user block. Refuse destructive deletion
+/// when child entities or INSERT references remain; callers must explicitly
+/// remove/repoint those objects first.
+#[wasm_bindgen]
+pub fn dwg_remove_empty_block_record(handle: u32, block_name: &str) -> Result<bool, JsValue> {
+    guard(|| with_document_mut(handle, |doc| {
+        let Some(record) = doc.block_records.get(block_name).cloned() else {
+            return Ok(false);
+        };
+        if record.is_standard() || record.is_layout() {
+            return Err(JsValue::from_str("Cannot remove model/paper space or layout block records."));
+        }
+        if !record.entity_handles.is_empty() || !record.insert_handles.is_empty()
+            || doc.entities().any(|entity| matches!(
+                entity,
+                acadrust::EntityType::Insert(insert)
+                    if insert.block_name.eq_ignore_ascii_case(block_name)
+            ))
+        {
+            return Err(JsValue::from_str("Cannot remove a block that still has entities or INSERT references."));
+        }
+        let _ = doc.remove_entity(record.block_entity_handle);
+        let _ = doc.remove_entity(record.block_end_handle);
+        doc.block_records.remove(block_name);
+        Ok(true)
+    }))
+}
+
+// Update only reference-safe common properties. Geometry and handle-bearing
 /// fields are deliberately excluded from this patch protocol so JS number
 /// precision cannot corrupt embedded u64 references.
 #[wasm_bindgen]
