@@ -26,6 +26,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       section: jest.fn(),
       entityPage: jest.fn(),
       blockEntityPage: jest.fn(),
+      blockEntityHandles: jest.fn().mockResolvedValue(['2A', '2B']),
       blockEntitiesBatch: jest.fn(),
       getEntity: jest.fn().mockResolvedValue(line),
       updateEntityCommon: jest.fn().mockResolvedValue(undefined),
@@ -96,6 +97,45 @@ describe('AcDbDatabase compatibility proxies', () => {
       'transactionCommitted',
       'databaseSaved'
     ])
+  })
+
+  it('reads block definitions and returns entity proxies with lossless handles', async () => {
+    const client = createClient()
+    client.section.mockResolvedValue({
+      handle: 1,
+      entries: {
+        '*Model_Space': {
+          handle: 1,
+          block_entity_handle: 2,
+          block_end_handle: 3,
+          name: '*Model_Space',
+          flags: {
+            anonymous: false,
+            has_attributes: false,
+            is_xref: false,
+            is_xref_overlay: false,
+            is_external: false,
+            is_xref_unloaded: false
+          },
+          layout: 0,
+          units: 0,
+          explodable: true,
+          scale_uniformly: false,
+          entity_handles: [42, 43],
+          xref_path: '',
+          description: '',
+          insert_handles: [],
+          base_point: [0, 0, 0]
+        }
+      }
+    } as never)
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const record = await db.blockTable.getAt('*model_space')
+
+    expect(record?.name).toBe('*Model_Space')
+    expect(await record?.getEntityHandles()).toEqual(['2A', '2B'])
+    expect((await record?.getEntities())?.map(entity => entity.handle)).toEqual(['2A', '2B'])
+    expect(client.blockEntityHandles).toHaveBeenCalledWith(7, '*Model_Space')
   })
 
   it('rolls back a failed transaction and closes idempotently', async () => {
