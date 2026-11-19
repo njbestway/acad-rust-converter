@@ -330,6 +330,85 @@ pub fn dwg_section_json(handle: u32, kind: &str) -> Result<String, JsValue> {
     })
 }
 
+/// One exact u64 handle discovered inside a serialized document section.
+#[derive(serde::Serialize)]
+struct ExactHandlePath {
+    /// JSON path segments from the section root (array indexes are decimal).
+    path: Vec<String>,
+    /// Canonical uppercase hexadecimal, without a 0x prefix.
+    handle: String,
+}
+
+fn collect_exact_handles(
+    value: &serde_json::Value,
+    path: &mut Vec<String>,
+    output: &mut Vec<ExactHandlePath>,
+) {
+    match value {
+        serde_json::Value::Object(fields) => {
+            for (key, child) in fields {
+                path.push(key.clone());
+                let is_handle_field = key == "handle"
+                    || key.ends_with("_handle")
+                    || key == "owner"
+                    || key == "block_record"
+                    || key == "block_entity"
+                    || key == "block_end";
+                if is_handle_field {
+                    if let Some(raw) = child.as_u64() {
+                        output.push(ExactHandlePath {
+                            path: path.clone(),
+                            handle: format!("{:X}", raw),
+                        });
+                    }
+                }
+                collect_exact_handles(child, path, output);
+                path.pop();
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for (index, child) in items.iter().enumerate() {
+                path.push(index.to_string());
+                collect_exact_handles(child, path, output);
+                path.pop();
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Lossless sidecar for handle-like fields in any supported document section.
+/// The regular section JSON remains unchanged for existing consumers; this
+/// index preserves exact u64 values and their JSON paths for identity/reference
+/// reconciliation without converting them through JavaScript Number.
+#[wasm_bindgen]
+pub fn dwg_section_handle_index_json(handle: u32, kind: &str) -> Result<String, JsValue> {
+    guard(|| with_document(handle, |doc| {
+        let json = match kind {
+            "header" => serde_json::to_value(&doc.header),
+            "summary-info" => serde_json::to_value(&doc.summary_info),
+            "classes" => serde_json::to_value(&doc.classes),
+            "tables-layer" => serde_json::to_value(&doc.layers),
+            "tables-ltype" => serde_json::to_value(&doc.line_types),
+            "tables-style" => serde_json::to_value(&doc.text_styles),
+            "tables-blockrecord" => serde_json::to_value(&doc.block_records),
+            "tables-dimstyle" => serde_json::to_value(&doc.dim_styles),
+            "tables-appid" => serde_json::to_value(&doc.app_ids),
+            "tables-view" => serde_json::to_value(&doc.views),
+            "tables-vport" => serde_json::to_value(&doc.vports),
+            "tables-ucs" => serde_json::to_value(&doc.ucss),
+            "tables-vx" => serde_json::to_value(&doc.vx_table),
+            "objects" => serde_json::to_value(&doc.objects),
+            other => return Err(JsValue::from_str(&format!(
+                "Unknown acad-rust section kind for handle index: {other}"
+            ))),
+        }.map_err(to_js("acadrust section handle index source serialize failed"))?;
+        let mut handles = Vec::new();
+        collect_exact_handles(&json, &mut Vec::new(), &mut handles);
+        to_json("acadrust section handle index serialize failed", &handles)
+    }))
+}
+
 /// One page of model-space entities (the primary drawable set), as a JSON
 /// array of externally-tagged `EntityType` values. `offset`/`limit` bound the
 /// wasm->JS payload so a huge drawing never materializes all its entities in
