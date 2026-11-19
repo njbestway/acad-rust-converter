@@ -54,7 +54,7 @@ export interface AcadRustDocumentClient {
   beginTransaction(handle: number): Promise<void>
   commitTransaction(handle: number): Promise<void>
   abortTransaction(handle: number): Promise<void>
-    close(handle: number): Promise<void>
+  close(handle: number): Promise<void>
   /** Tear down any transport (worker) resources; safe to call more than once. */
   dispose(): void
 }
