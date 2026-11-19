@@ -498,7 +498,7 @@ pub fn dwg_add_entity_json(handle: u32, entity_json: &str) -> Result<String, JsV
     guard(|| {
         let mut entity: acadrust::EntityType = serde_json::from_str(entity_json)
             .map_err(to_js("acadrust entity JSON parse failed"))?;
-        if matches!(entity, acadrust::EntityType::Unknown(_)) {
+        if matches!(&entity, acadrust::EntityType::Unknown(_)) {
             return Err(JsValue::from_str(
                 "Adding raw Unknown entities is not supported; preserve existing unknown records in-place.",
             ));
