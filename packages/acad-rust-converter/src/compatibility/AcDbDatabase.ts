@@ -8,6 +8,7 @@ import {
 import {
   type AcadRustDocumentClient,
   type AcadRustEntityCommonPatch,
+  type AcadRustLwPolylineGeometryPatch,
   type AcadRustCircleArcGeometryPatch,
   type AcadRustInsertPlacementPatch,
   type AcadRustDynamicBlockIndex,
@@ -285,6 +286,14 @@ export class AcDbDatabase {
     this.identities.clear()
     this.listeners.clear()
     this.listenerErrors.length = 0
+  }
+
+  /** @internal LWPOLYLINE geometry proxy bridge. */
+  async patchLwPolylineGeometry(handle: AcDbHandle, geometry: AcadRustLwPolylineGeometryPatch): Promise<void> {
+    this.assertOpen()
+    await this.client.updateLwPolylineGeometry(this.documentHandle, handle, geometry)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
   /** @internal LINE geometry proxy bridge. */
@@ -613,6 +622,10 @@ export class AcDbEntity {
       start: line.start as AcadRustPoint3d,
       end: line.end as AcadRustPoint3d
     }
+  }
+
+  async setPolylineGeometry(geometry: AcadRustLwPolylineGeometryPatch): Promise<void> {
+    await this.database.patchLwPolylineGeometry(this.handle, geometry)
   }
 
   async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
