@@ -929,6 +929,68 @@ pub fn dwg_update_circle_arc_geometry_json(
     })
 }
 
+#[derive(serde::Deserialize)]
+struct EllipseGeometryPatch {
+    center: Option<Point3Patch>,
+    major_axis: Option<Point3Patch>,
+    minor_axis_ratio: Option<f64>,
+    start_parameter: Option<f64>,
+    end_parameter: Option<f64>,
+    normal: Option<Point3Patch>,
+}
+
+/// Reference-safe ELLIPSE geometry update. The entity's common data and all
+/// handle-bearing relationships remain resident in CadDocument.
+#[wasm_bindgen]
+pub fn dwg_update_ellipse_geometry_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    geometry_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: EllipseGeometryPatch = serde_json::from_str(geometry_json)
+            .map_err(to_js("ELLIPSE geometry patch JSON parse failed"))?;
+        for point in [patch.center.as_ref(), patch.major_axis.as_ref(), patch.normal.as_ref()].into_iter().flatten() {
+            if ![point.x, point.y, point.z].iter().all(|value| value.is_finite()) {
+                return Err(JsValue::from_str("ELLIPSE point and vector values must be finite."));
+            }
+        }
+        if let Some(ratio) = patch.minor_axis_ratio {
+            if !ratio.is_finite() || ratio <= 0.0 {
+                return Err(JsValue::from_str("ELLIPSE minor-axis ratio must be finite and greater than zero."));
+            }
+        }
+        for value in [patch.start_parameter, patch.end_parameter].into_iter().flatten() {
+            if !value.is_finite() {
+                return Err(JsValue::from_str("ELLIPSE parameters must be finite."));
+            }
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            match entity {
+                acadrust::EntityType::Ellipse(ellipse) => {
+                    if let Some(point) = patch.center {
+                        ellipse.center = acadrust::types::Vector3::new(point.x, point.y, point.z);
+                    }
+                    if let Some(axis) = patch.major_axis {
+                        ellipse.major_axis = acadrust::types::Vector3::new(axis.x, axis.y, axis.z);
+                    }
+                    if let Some(ratio) = patch.minor_axis_ratio { ellipse.minor_axis_ratio = ratio; }
+                    if let Some(value) = patch.start_parameter { ellipse.start_parameter = value; }
+                    if let Some(value) = patch.end_parameter { ellipse.end_parameter = value; }
+                    if let Some(normal) = patch.normal {
+                        ellipse.normal = acadrust::types::Vector3::new(normal.x, normal.y, normal.z);
+                    }
+                    Ok(())
+                }
+                _ => Err(JsValue::from_str("The target entity is not an ELLIPSE.")),
+            }
+        })
+    })
+}
+
 //// Create a structurally complete BLOCK definition (BLOCK-RECORD, BLOCK,
 /// ENDBLK) in the resident document. Entity membership remains empty until
 /// dwg_add_entity_to_block_json is called.
