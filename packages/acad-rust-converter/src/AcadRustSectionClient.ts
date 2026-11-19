@@ -29,6 +29,10 @@ export interface AcadRustDocumentClient {
   section<T>(handle: number, kind: AcadRustSectionKind): Promise<T>
   /** Exact u64 handle fields and their JSON paths for a section. */
   sectionHandleIndex(handle: number, kind: AcadRustSectionKind): Promise<AcadRustExactHandlePath[]>
+  /** Exact dynamic-block graph and visibility metadata (read-only). */
+  dynamicBlockIndex(handle: number): Promise<AcadRustDynamicBlockIndex>
+  /** Inspect the ATTRIB/SEQEND chain for an INSERT. */
+  insertSequence(handle: number, insertHandle: string): Promise<AcadRustInsertSequence>
   /** One bounded page of model-space entities. */
   entityPage(handle: number, offset: number, limit: number): Promise<AcadRustEntity[]>
   /** Exact hexadecimal handles aligned by index with entityPage(). */
@@ -93,6 +97,43 @@ export interface AcadRustDocumentClient {
   close(handle: number): Promise<void>
   /** Tear down any transport (worker) resources; safe to call more than once. */
   dispose(): void
+}
+
+export interface AcadRustDynamicBlockIndex {
+  dynamicObjects: Array<{
+    handle: string
+    owner: string
+    dxfName: string
+    cppClassName: string
+    data: unknown
+  }>
+  visibilityParameters: Array<{
+    handle: string
+    owner: string
+    name: string
+    description: string
+    allBlocks: string[]
+    states: Array<{ name: string; visibleBlocks: string[]; visibleParams: string[] }>
+  }>
+  representations: Array<{ representationHandle: string; dynamicBlockHandle: string }>
+}
+
+export interface AcadRustInsertSequence {
+  insertHandle: string
+  blockName: string
+  attributes: Array<{
+    handle: string
+    tag: string
+    value: string
+    attdefHandle: string
+    ownerHandle: string
+    attdefResolved: boolean
+    ownerMatchesInsert: boolean
+    uniqueHandle: boolean
+  }>
+  seqendHandle: string | null
+  seqendResolved: boolean
+  valid: boolean
 }
 
 export interface AcadRustCreatedBlockRecord {
@@ -263,6 +304,24 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       section: kind
     })
     return this.parseJson<AcadRustExactHandlePath[]>(result, `section-handle-index:${kind}`)
+  }
+
+  async dynamicBlockIndex(handle: number): Promise<AcadRustDynamicBlockIndex> {
+    const result = await this.request({ id: 0, kind: 'dynamic-block-index', handle })
+    return this.parseJson<AcadRustDynamicBlockIndex>(result, 'dynamic-block-index')
+  }
+
+  async insertSequence(
+    handle: number,
+    insertHandle: string
+  ): Promise<AcadRustInsertSequence> {
+    const result = await this.request({
+      id: 0,
+      kind: 'insert-sequence',
+      handle,
+      entityHandle: insertHandle
+    })
+    return this.parseJson<AcadRustInsertSequence>(result, 'insert-sequence')
   }
 
   async entityPage(
