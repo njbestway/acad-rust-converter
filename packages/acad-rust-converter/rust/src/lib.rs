@@ -877,6 +877,7 @@ pub fn dwg_move_entity_to_block(
             let target_handle = target.handle;
             let target_is_model = target.is_model_space();
             let target_is_paper = target.is_paper_space();
+            let target_already_contains = target.entity_handles.contains(&entity_handle);
             let current = doc.get_entity(entity_handle)
                 .ok_or_else(|| JsValue::from_str("Entity handle was not found."))?;
             if matches!(
@@ -890,18 +891,30 @@ pub fn dwg_move_entity_to_block(
             }
             let old_owner = current.common().owner_handle;
             if old_owner == target_handle {
+                if !target_already_contains {
+                    if let Some(record) = doc.block_records.iter_mut().find(|record| record.handle == target_handle) {
+                        record.entity_handles.push(entity_handle);
+                    }
+                }
                 return Ok(());
             }
             let old_record_exists = doc.block_records.iter().any(|record| record.handle == old_owner);
             if !old_owner.is_null() && !old_record_exists {
                 return Err(JsValue::from_str("Current entity owner does not resolve to a block record."));
             }
-            if let Some(old_record) = doc.block_records.iter_mut().find(|record| record.handle == old_owner) {
-                let before = old_record.entity_handles.len();
-                old_record.entity_handles.retain(|member| *member != entity_handle);
-                if old_record.entity_handles.len() == before {
-                    return Err(JsValue::from_str("Current block membership does not contain the entity handle."));
+            let mut found_old_membership = false;
+            for record in doc.block_records.iter_mut() {
+                if record.handle == target_handle {
+                    continue;
                 }
+                let before = record.entity_handles.len();
+                record.entity_handles.retain(|member| *member != entity_handle);
+                if record.handle == old_owner && record.entity_handles.len() != before {
+                    found_old_membership = true;
+                }
+            }
+            if !old_owner.is_null() && !found_old_membership {
+                return Err(JsValue::from_str("Current block membership does not contain the entity handle."));
             }
             if let Some(new_record) = doc.block_records.iter_mut().find(|record| record.handle == target_handle) {
                 if !new_record.entity_handles.contains(&entity_handle) {
