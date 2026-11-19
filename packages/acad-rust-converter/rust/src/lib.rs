@@ -1029,7 +1029,7 @@ pub fn dwg_update_insert_placement_json(
                 _ => return Err(JsValue::from_str("Entity is not an INSERT.")),
             };
             if let Some(point) = patch.insert_point {
-                insert.insert_point = Vector3::new(point.x, point.y, point.z);
+                insert.insert_point = acadrust::Vector3::new(point.x, point.y, point.z);
             }
             if let Some([x, y, z]) = patch.scale {
                 insert.set_x_scale(x);
@@ -1040,7 +1040,7 @@ pub fn dwg_update_insert_placement_json(
                 insert.rotation = rotation;
             }
             if let Some(normal) = patch.normal {
-                insert.normal = Vector3::new(normal.x, normal.y, normal.z);
+                insert.normal = acadrust::Vector3::new(normal.x, normal.y, normal.z);
             }
             Ok(())
         })
