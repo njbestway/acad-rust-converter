@@ -205,6 +205,26 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.updateSplineGeometry).toHaveBeenCalledWith(7, '2A', patch)
   })
 
+  it('updates TEXT through the native typed proxy', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    jest.spyOn(entity, 'getClassName').mockResolvedValue('Text')
+    const patch = { value: 'UPDATED', insertionPoint: { x: 10, y: 20, z: 0 }, height: 2.5, rotation: 0.25, widthFactor: 0.9 }
+    await entity.setTextGeometry(patch)
+    expect(client.updateTextGeometry).toHaveBeenCalledWith(7, '2A', patch)
+  })
+
+  it('updates MTEXT through the native typed proxy', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    jest.spyOn(entity, 'getClassName').mockResolvedValue('MText')
+    const patch = { value: 'LINE 1\\PLINE 2', insertionPoint: { x: 10, y: 20, z: 0 }, height: 2.5, rectangleWidth: 80, rotation: 0.5 }
+    await entity.setMTextGeometry(patch)
+    expect(client.updateMTextGeometry).toHaveBeenCalledWith(7, '2A', patch)
+  })
+
   it('updates single-line ATTRIB values and ATTDEF defaults through typed APIs', async () => {
     const client = createClient()
     const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
