@@ -102,7 +102,6 @@ import {
 import {
   type AcadRustDocumentClient,
   type AcadRustExactHandlePath,
-  type AcadRustSectionKind,
   AcadRustWorkerDocumentClient
 } from './AcadRustSectionClient'
 import type { AcDbAcadRustConverterConfig } from './AcDbAcadRustConverter'
@@ -171,6 +170,7 @@ import {
   type AcadRustPolyline3DPayload,
   type AcadRustPolylinePayload,
   type AcadRustResultBufferValue,
+  type AcadRustSectionKind,
   type AcadRustSolidPayload,
   type AcadRustSplinePayload,
   type AcadRustTableCellPayload,
