@@ -1777,6 +1777,51 @@ fn document_roundtrip_fingerprint(doc: &CadDocument) -> Result<serde_json::Value
     let vx_control_entries: Vec<String> = doc.vx_control_entries.iter()
         .map(|handle| format!("{:X}", handle.value())).collect();
 
+    let mut eed_records = Vec::new();
+    for (handle, records) in &doc.eed_by_handle {
+        let values: Vec<_> = records.iter().map(|(application, bytes)| {
+            serde_json::json!({
+                "application": format!("{:X}", application),
+                "byteLength": bytes.len(),
+                "fingerprint": stable_bytes_fingerprint(bytes)
+            })
+        }).collect();
+        eed_records.push(serde_json::json!({
+            "handle": format!("{:X}", handle.value()),
+            "records": values
+        }));
+    }
+    eed_records.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let mut block_owned_handles = Vec::new();
+    for (block, handles) in &doc.block_entity_handles {
+        block_owned_handles.push(serde_json::json!({
+            "block": format!("{:X}", block.value()),
+            "handles": handles.iter().map(|h| format!("{:X}", h.value())).collect::<Vec<_>>()
+        }));
+    }
+    block_owned_handles.sort_by(|a, b| a["block"].as_str().cmp(&b["block"].as_str()));
+
+    let mut data_store_handles: Vec<String> = doc.dwg_data_store_handles.iter()
+        .map(|handle| format!("{:X}", handle.value())).collect();
+    data_store_handles.sort();
+
+    let acds_data = doc.raw_acds_data.as_ref().map(|bytes| {
+        serde_json::json!({
+            "byteLength": bytes.len(),
+            "fingerprint": stable_bytes_fingerprint(bytes.as_slice())
+        })
+    });
+
+    let metadata = serde_json::json!({
+        "version": serde_json::to_value(doc.version).map_err(to_js("round-trip version snapshot failed"))?,
+        "maintenanceVersion": doc.maintenance_version,
+        "dwgSourceVersion": serde_json::to_value(doc.dwg_source_version).map_err(to_js("round-trip DWG source version snapshot failed"))?,
+        "header": serde_json::to_value(&doc.header).map_err(to_js("round-trip header snapshot failed"))?,
+        "summaryInfo": serde_json::to_value(&doc.summary_info).map_err(to_js("round-trip summary info snapshot failed"))?,
+        "classes": serde_json::to_value(&doc.classes).map_err(to_js("round-trip classes snapshot failed"))?
+    });
+
     Ok(serde_json::json!({
         "entities": entities.into_iter().map(|(_, value)| value).collect::<Vec<_>>(),
         "blockRecords": block_records,
@@ -1792,7 +1837,12 @@ fn document_roundtrip_fingerprint(doc: &CadDocument) -> Result<serde_json::Value
         "fieldDefinitions": field_definitions,
         "dgnLineStyleDefinitions": dgn_definitions,
         "dgnLineStyleComponents": dgn_components,
-        "vxControlEntries": vx_control_entries
+        "vxControlEntries": vx_control_entries,
+        "eedRecords": eed_records,
+        "blockOwnedHandles": block_owned_handles,
+        "dataStoreHandles": data_store_handles,
+        "acdsData": acds_data,
+        "metadata": metadata
     }))
 }
 
@@ -1867,6 +1917,11 @@ pub fn dwg_roundtrip_audit_json(handle: u32) -> Result<String, JsValue> {
             "dgnLineStyleDefinitionsEqual": equal("dgnLineStyleDefinitions"),
             "dgnLineStyleComponentsEqual": equal("dgnLineStyleComponents"),
             "vxControlEntriesEqual": equal("vxControlEntries"),
+            "eedRecordsEqual": equal("eedRecords"),
+            "blockOwnedHandlesEqual": equal("blockOwnedHandles"),
+            "dataStoreHandlesEqual": equal("dataStoreHandles"),
+            "acdsDataEqual": equal("acdsData"),
+            "metadataEqual": equal("metadata"),
             "beforeFingerprint": stable_bytes_fingerprint(
                 &serde_json::to_vec(&before).map_err(to_js("before fingerprint serialize failed"))?
             ),
