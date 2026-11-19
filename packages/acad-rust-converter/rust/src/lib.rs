@@ -1713,6 +1713,39 @@ fn document_roundtrip_fingerprint(doc: &CadDocument) -> Result<serde_json::Value
     }))
 }
 
+/// Enumerate opaque DWG OBJECTS records without exposing or mutating their
+/// raw byte payloads. This includes custom application objects (for example
+/// Mechanical/vertical-product objects) that acadrust cannot semantically edit.
+#[wasm_bindgen]
+pub fn dwg_opaque_object_index_json(handle: u32) -> Result<String, JsValue> {
+    guard(|| with_document(handle, |doc| {
+        let mut items = Vec::new();
+        for (object_handle, object) in &doc.objects {
+            if let acadrust::objects::ObjectType::Unknown {
+                type_name,
+                handle: intrinsic_handle,
+                owner,
+                raw_dwg_data,
+                raw_dwg_handle_bits,
+                ..
+            } = object {
+                items.push(serde_json::json!({
+                    "handle": format!("{:X}", object_handle.value()),
+                    "intrinsicHandle": format!("{:X}", intrinsic_handle.value()),
+                    "owner": format!("{:X}", owner.value()),
+                    "typeName": type_name,
+                    "rawBytesLength": raw_dwg_data.as_ref().map_or(0, |bytes| bytes.len()),
+                    "rawBytesFingerprint": raw_dwg_data.as_ref()
+                        .map(|bytes| stable_bytes_fingerprint(bytes)),
+                    "handleStreamBits": raw_dwg_handle_bits
+                }));
+            }
+        }
+        items.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+        to_json("opaque OBJECTS index serialize failed", &items)
+    }))
+}
+
 /// Save and reopen the resident document in memory, then compare a stable
 /// snapshot of entity geometry/references, block membership, OBJECTS, XDATA,
 /// dynamic visibility and opaque-object byte fingerprints. This validates the
