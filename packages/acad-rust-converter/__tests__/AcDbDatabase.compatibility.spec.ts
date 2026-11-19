@@ -490,4 +490,16 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(() => db.getEntity('2A')).toThrow('AcDbDatabase is closed')
   })
 
+  it('exposes shared entity common properties without a local mutable copy', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    const common = await entity.getCommonData()
+    expect(common.layer).toBe('0')
+    expect(common.linetype).toBe('ByLayer')
+    expect(await entity.getLayer()).toBe('0')
+    expect(await entity.getReactors()).toEqual([])
+    expect(await entity.getExtendedData()).toEqual([])
+  })
+
 })
