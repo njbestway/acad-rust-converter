@@ -89,6 +89,8 @@ export interface AcadRustDocumentClient {
   updateCircleArcGeometry(handle: number, entityHandle: string, geometry: AcadRustCircleArcGeometryPatch): Promise<void>
   /** Typed ELLIPSE geometry update; preserves common/reference fields. */
   updateEllipseGeometry(handle: number, entityHandle: string, geometry: AcadRustEllipseGeometryPatch): Promise<void>
+  updateTextGeometry(handle: number, entityHandle: string, geometry: AcadRustTextGeometryPatch): Promise<void>
+  updateMTextGeometry(handle: number, entityHandle: string, geometry: AcadRustMTextGeometryPatch): Promise<void>
   /** Typed NURBS SPLINE update; preserves common/reference fields and DWG-only state. */
   updateSplineGeometry(handle: number, entityHandle: string, geometry: AcadRustSplineGeometryPatch): Promise<void>
   /** Typed INSERT placement update; leaves block and ATTRIB references untouched. */
@@ -230,6 +232,34 @@ export interface AcadRustCircleArcGeometryPatch {
   radius?: number
   startAngle?: number
   endAngle?: number
+}
+
+export interface AcadRustTextGeometryPatch {
+  value?: string
+  insertionPoint?: AcadRustPoint3d
+  alignmentPoint?: AcadRustPoint3d | null
+  height?: number
+  rotation?: number
+  widthFactor?: number
+  obliqueAngle?: number
+  style?: string
+  normal?: AcadRustPoint3d
+  thickness?: number
+  generationFlags?: number
+}
+export interface AcadRustMTextGeometryPatch {
+  value?: string
+  insertionPoint?: AcadRustPoint3d
+  height?: number
+  rectangleWidth?: number
+  rectangleHeight?: number | null
+  rotation?: number
+  style?: string
+  normal?: AcadRustPoint3d
+  lineSpacingFactor?: number
+  backgroundFillFlags?: number
+  backgroundScale?: number
+  backgroundTransparency?: number
 }
 
 export interface AcadRustSplineFlagsPatch {
@@ -770,6 +800,25 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
         normal: geometry.normal
       })
     })
+  }
+
+  async updateTextGeometry(handle: number, entityHandle: string, geometry: AcadRustTextGeometryPatch): Promise<void> {
+    await this.request({ id: 0, kind: 'update-text', handle, entityHandle, geometryJson: JSON.stringify({
+      value: geometry.value, insertion_point: geometry.insertionPoint,
+      alignment_point: geometry.alignmentPoint, height: geometry.height, rotation: geometry.rotation,
+      width_factor: geometry.widthFactor, oblique_angle: geometry.obliqueAngle, style: geometry.style,
+      normal: geometry.normal, thickness: geometry.thickness, generation_flags: geometry.generationFlags
+    }) })
+  }
+
+  async updateMTextGeometry(handle: number, entityHandle: string, geometry: AcadRustMTextGeometryPatch): Promise<void> {
+    await this.request({ id: 0, kind: 'update-mtext', handle, entityHandle, geometryJson: JSON.stringify({
+      value: geometry.value, insertion_point: geometry.insertionPoint, height: geometry.height,
+      rectangle_width: geometry.rectangleWidth, rectangle_height: geometry.rectangleHeight,
+      rotation: geometry.rotation, style: geometry.style, normal: geometry.normal,
+      line_spacing_factor: geometry.lineSpacingFactor, background_fill_flags: geometry.backgroundFillFlags,
+      background_scale: geometry.backgroundScale, background_transparency: geometry.backgroundTransparency
+    }) })
   }
 
   async updateSplineGeometry(
