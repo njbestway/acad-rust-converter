@@ -237,7 +237,7 @@ export interface AcadRustCircleArcGeometryPatch {
 export interface AcadRustTextGeometryPatch {
   value?: string
   insertionPoint?: AcadRustPoint3d
-  alignmentPoint?: AcadRustPoint3d | null
+  alignmentPoint?: AcadRustPoint3d
   height?: number
   rotation?: number
   widthFactor?: number
@@ -252,7 +252,7 @@ export interface AcadRustMTextGeometryPatch {
   insertionPoint?: AcadRustPoint3d
   height?: number
   rectangleWidth?: number
-  rectangleHeight?: number | null
+  rectangleHeight?: number
   rotation?: number
   style?: string
   normal?: AcadRustPoint3d
