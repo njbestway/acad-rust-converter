@@ -151,6 +151,26 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.blockEntityHandles).toHaveBeenCalledWith(7, '*Model_Space')
   })
 
+  it('keeps ObjectId-to-handle identities exact and rolls them back with nested transactions', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const exactHandle = 'FFFFFFFFFFFFFFFF'
+    db.bindObjectIdentity('mlight-object-1', exactHandle)
+    expect(db.getHandleForObjectId('mlight-object-1')).toBe(exactHandle)
+    expect(db.getObjectIdForHandle('0xffffffffffffffff')).toBe('mlight-object-1')
+
+    await db.beginTransaction()
+    db.bindObjectIdentity('temporary-object', '1000000000000000')
+    await db.beginTransaction()
+    db.bindObjectIdentity('nested-object', '1000000000000001')
+    await db.abortTransaction()
+    expect(db.getObjectIdForHandle('1000000000000001')).toBeUndefined()
+    expect(db.getObjectIdForHandle('1000000000000000')).toBe('temporary-object')
+    await db.abortTransaction()
+    expect(db.getObjectIdForHandle('1000000000000000')).toBeUndefined()
+    expect(db.getObjectIdForHandle(exactHandle)).toBe('mlight-object-1')
+  })
+
   it('rolls back a failed transaction and closes idempotently', async () => {
     const client = createClient()
     const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
