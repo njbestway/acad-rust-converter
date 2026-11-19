@@ -232,6 +232,7 @@ export class AcDbDatabase {
     this.identitySnapshots.length = 0
     this.identities.clear()
     this.listeners.clear()
+    this.listenerErrors.length = 0
   }
 
   /** @internal LINE geometry proxy bridge. */
