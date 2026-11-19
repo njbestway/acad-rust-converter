@@ -130,19 +130,27 @@ export class AcDbDatabase {
 
   async commitTransaction(): Promise<void> {
     this.assertOpen()
-    await this.client.commitTransaction(this.documentHandle)
+    // Validate the façade stack before touching Rust. Otherwise a mismatched
+    // caller could commit the resident document and only then discover that
+    // the identity snapshot stack was empty.
     if (this.identitySnapshots.length === 0) {
-      throw new Error('No active identity snapshot for this transaction.')
+      throw new Error('No active transaction for this database.')
     }
+    await this.client.commitTransaction(this.documentHandle)
     this.identitySnapshots.pop()
     this.emit({ type: 'transactionCommitted' })
   }
 
   async abortTransaction(): Promise<void> {
     this.assertOpen()
+    // Keep the identity snapshot until Rust confirms its rollback. If the
+    // worker fails, callers can retry instead of losing the only matching map.
+    const snapshot = this.identitySnapshots[this.identitySnapshots.length - 1]
+    if (snapshot == null) {
+      throw new Error('No active transaction for this database.')
+    }
     await this.client.abortTransaction(this.documentHandle)
-    const snapshot = this.identitySnapshots.pop()
-    if (snapshot == null) throw new Error('No active identity snapshot for this transaction.')
+    this.identitySnapshots.pop()
     this.identities.restore(snapshot)
     this.emit({ type: 'transactionAborted' })
   }
@@ -154,9 +162,25 @@ export class AcDbDatabase {
       await this.commitTransaction()
       return result
     } catch (error) {
-      await this.abortTransaction()
+      // A failed commit may leave the Rust transaction active; a failed action
+      // definitely does. Attempt rollback, but never replace the original
+      // failure with a secondary rollback error.
+      try {
+        if (this.identitySnapshots.length > 0) await this.abortTransaction()
+      } catch (rollbackError) {
+        if (error instanceof Error) {
+          Object.defineProperty(error, 'rollbackError', {
+            value: rollbackError,
+            configurable: true
+          })
+        }
+      }
       throw error
     }
+  }
+
+  get transactionDepth(): number {
+    return this.identitySnapshots.length
   }
 
   async save(): Promise<ArrayBuffer> {
