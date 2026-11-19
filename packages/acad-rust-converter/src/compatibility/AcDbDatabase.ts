@@ -317,7 +317,7 @@ export class AcDbBlockTableRecord {
   get explodable(): boolean { return this.record.explodable }
   get scaleUniformly(): boolean { return this.record.scale_uniformly }
   get units(): number { return this.record.units }
-  get basePoint(): readonly number[] { return this.record.base_point }
+  get basePoint(): AcadRustPoint3d { return this.record.base_point }
   get flags(): AcadRustBlockRecord['flags'] { return this.record.flags }
 
   async getEntityHandles(): Promise<string[]> {
