@@ -563,7 +563,28 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
         if (page.length === 0) {
           break
         }
-        for (const entity of page) {
+        // Entity JSON currently carries common.handle as a JS number, which
+        // cannot represent every DWG u64 exactly. Fetch the parallel exact-hex
+        // handle page and enforce index alignment before mapping any entity.
+        const exactHandles = await client.entityHandlePage(handle, offset, pageSize)
+        if (exactHandles.length !== page.length || exactHandles.some(h => !/^[0-9A-F]+$/.test(h))) {
+          throw new Error(
+            `acad-rust entity/handle pages are misaligned at offset ${offset}: ` +
+              `${page.length} entities, ${exactHandles.length} exact handles.`
+          )
+        }
+        for (let i = 0; i < page.length; i++) {
+          const entity = page[i]
+          const payload = Object.values(entity)[0] as { common?: { handle?: number } } | undefined
+          const numericHandle = payload?.common?.handle
+          // Where the legacy numeric field is safe, fail fast if it disagrees
+          // with Rust's exact handle sidecar. Unsafe numbers are deliberately
+          // not converted back into a supposedly exact identity.
+          if (typeof numericHandle === 'number' && Number.isSafeInteger(numericHandle) &&
+              numericHandle.toString(16).toUpperCase() !== exactHandles[i]) {
+            throw new Error(`acad-rust entity handle mismatch at page index ${i} (offset ${offset}).`)
+          }
+
           if (!mapEntity(entity, modelSpace)) {
             unknownEntityCount++
           }
