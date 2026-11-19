@@ -112,3 +112,8 @@ XDATA and XRecord `Handle` enum values in mutation payloads must be supplied as 
 
 
 The optional converter `identityMap` now also binds the mapped LAYER, LTYPE, STYLE, DIMSTYLE, VPORT and BLOCK-RECORD table records by matching their database-generated ObjectIds to the exact `entries/<name>/handle` paths in the section sidecar. This still does not automatically cover every OBJECTS variant or all non-graphical records.
+
+
+### Owner reassignment / moving entities between blocks
+
+The Rust bridge now exposes `dwg_move_entity_to_block`. It refuses sub-entities and structural BLOCK/ENDBLK/SEQEND markers, validates the current owner block membership before mutation, removes stale duplicate memberships from other blocks, inserts the entity handle into the target block's membership list, and updates `common.owner_handle` plus model/paper `entity_mode`. The original entity handle, XDATA, reactors, Extension Dictionary and entity-specific references remain untouched. The TypeScript proxy exposes `AcDbEntity.moveToBlock` and `AcDbBlockTableRecord.moveEntityHere`.
