@@ -28,6 +28,8 @@ export interface AcadRustDocumentClient {
   section<T>(handle: number, kind: AcadRustSectionKind): Promise<T>
   /** One bounded page of model-space entities. */
   entityPage(handle: number, offset: number, limit: number): Promise<AcadRustEntity[]>
+  /** Lossless hexadecimal handles for all entities in a block definition. */
+  blockEntityHandles(handle: number, blockName: string): Promise<string[]>
   /** One bounded page of a named block definition's entities. */
   blockEntityPage(
     handle: number,
@@ -198,6 +200,11 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
   ): Promise<AcadRustEntity[]> {
     const result = await this.request({ id: 0, kind: 'page', handle, offset, limit })
     return this.parseJson<AcadRustEntity[]>(result, 'entity-page')
+  }
+
+  async blockEntityHandles(handle: number, blockName: string): Promise<string[]> {
+    const result = await this.request({ id: 0, kind: 'block-handles', handle, block: blockName })
+    return this.parseJson<string[]>(result, 'block-entity-handles')
   }
 
   async blockEntityPage(
