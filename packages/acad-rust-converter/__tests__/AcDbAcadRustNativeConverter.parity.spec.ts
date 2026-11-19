@@ -182,6 +182,12 @@ class FixtureClient implements AcadRustDocumentClient {
     _patch: any
   ): Promise<void> {}
 
+  async updateLineGeometry(
+    _handle: number,
+    _entityHandle: string,
+    _geometry: any
+  ): Promise<void> {}
+
   async addEntity(_handle: number, _entityJson: string): Promise<string> {
     return '1'
   }
