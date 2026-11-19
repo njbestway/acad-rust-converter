@@ -735,6 +735,35 @@ struct LwPolylineGeometryPatch {
     constant_width: Option<f64>, elevation: Option<f64>, thickness: Option<f64>, normal: Option<Point3Patch>,
 }
 
+fn apply_lwpolyline_vertex_operations(
+    mut vertices: Vec<acadrust::entities::LwVertex>,
+    operations: Vec<LwPolylineVertexOperation>,
+) -> Result<Vec<acadrust::entities::LwVertex>, &'static str> {
+    for operation in operations {
+        match operation {
+            LwPolylineVertexOperation::Insert { index, vertex } => {
+                if index > vertices.len() { return Err("LWPOLYLINE insert index is out of range."); }
+                vertices.insert(index, acadrust::entities::LwVertex {
+                    location: acadrust::types::Vector2::new(vertex.location.x, vertex.location.y),
+                    bulge: vertex.bulge, start_width: vertex.start_width, end_width: vertex.end_width,
+                    vertex_id: vertex.vertex_id,
+                });
+            }
+            LwPolylineVertexOperation::Update { index, vertex } => {
+                let target = vertices.get_mut(index).ok_or("LWPOLYLINE update index is out of range.")?;
+                target.location = acadrust::types::Vector2::new(vertex.location.x, vertex.location.y);
+                target.bulge = vertex.bulge; target.start_width = vertex.start_width;
+                target.end_width = vertex.end_width; target.vertex_id = vertex.vertex_id;
+            }
+            LwPolylineVertexOperation::Remove { index } => {
+                if index >= vertices.len() { return Err("LWPOLYLINE remove index is out of range."); }
+                vertices.remove(index);
+            }
+        }
+    }
+    Ok(vertices)
+}
+
 /// In-place LWPOLYLINE patch: never replaces common data or handle relationships.
 #[wasm_bindgen]
 pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str, geometry_json: &str) -> Result<(), JsValue> {
@@ -775,25 +804,9 @@ pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str,
                         location: acadrust::types::Vector2::new(v.location.x, v.location.y), bulge: v.bulge,
                         start_width: v.start_width, end_width: v.end_width, vertex_id: v.vertex_id,
                     }).collect()).unwrap_or_else(|| polyline.vertices.clone());
-                    if let Some(operations) = patch.vertex_operations {
-                        for operation in operations {
-                            match operation {
-                                LwPolylineVertexOperation::Insert { index, vertex } => {
-                                    if index > vertices.len() { return Err(JsValue::from_str("LWPOLYLINE insert index is out of range.")); }
-                                    vertices.insert(index, acadrust::entities::LwVertex { location: acadrust::types::Vector2::new(vertex.location.x, vertex.location.y), bulge: vertex.bulge, start_width: vertex.start_width, end_width: vertex.end_width, vertex_id: vertex.vertex_id });
-                                }
-                                LwPolylineVertexOperation::Update { index, vertex } => {
-                                    let target = vertices.get_mut(index).ok_or_else(|| JsValue::from_str("LWPOLYLINE update index is out of range."))?;
-                                    target.location = acadrust::types::Vector2::new(vertex.location.x, vertex.location.y);
-                                    target.bulge = vertex.bulge; target.start_width = vertex.start_width; target.end_width = vertex.end_width; target.vertex_id = vertex.vertex_id;
-                                }
-                                LwPolylineVertexOperation::Remove { index } => {
-                                    if index >= vertices.len() { return Err(JsValue::from_str("LWPOLYLINE remove index is out of range.")); }
-                                    vertices.remove(index);
-                                }
-                            }
-                        }
-                    }
+                    let vertices = if let Some(operations) = patch.vertex_operations {
+                        apply_lwpolyline_vertex_operations(vertices, operations).map_err(JsValue::from_str)?
+                    } else { vertices };
                     if has_vertex_patch { polyline.vertices = vertices; }
                     if let Some(v) = patch.is_closed { polyline.is_closed = v; }
                     if let Some(v) = patch.plinegen { polyline.plinegen = v; }
@@ -2093,5 +2106,65 @@ mod dwg_roundtrip_audit_tests {
         let after = document_roundtrip_fingerprint(&reopened).unwrap();
 
         assert_eq!(before, after);
+    }
+}
+
+
+#[cfg(test)]
+mod lwpolyline_vertex_operation_tests {
+    use super::*;
+
+    fn vertex(x: f64, id: i32) -> LwPolylineVertexPatch {
+        LwPolylineVertexPatch {
+            location: Point2Patch { x, y: x + 1.0 },
+            bulge: 0.25,
+            start_width: 1.0,
+            end_width: 2.0,
+            vertex_id: id,
+        }
+    }
+
+    fn existing_vertex(x: f64, id: i32) -> acadrust::entities::LwVertex {
+        acadrust::entities::LwVertex {
+            location: acadrust::types::Vector2::new(x, x + 1.0),
+            bulge: 0.0,
+            start_width: 0.0,
+            end_width: 0.0,
+            vertex_id: id,
+        }
+    }
+
+    #[test]
+    fn indexed_insert_update_remove_preserve_order_and_vertex_metadata() {
+        let result = apply_lwpolyline_vertex_operations(
+            vec![existing_vertex(0.0, 10), existing_vertex(20.0, 30)],
+            vec![
+                LwPolylineVertexOperation::Insert { index: 1, vertex: vertex(10.0, 20) },
+                LwPolylineVertexOperation::Update { index: 2, vertex: vertex(25.0, 31) },
+                LwPolylineVertexOperation::Remove { index: 0 },
+            ],
+        ).expect("valid operations");
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].vertex_id, 20);
+        assert_eq!(result[0].location.x, 10.0);
+        assert_eq!(result[0].bulge, 0.25);
+        assert_eq!(result[1].vertex_id, 31);
+        assert_eq!(result[1].start_width, 1.0);
+        assert_eq!(result[1].end_width, 2.0);
+    }
+
+    #[test]
+    fn invalid_index_returns_error_without_mutating_original_vector() {
+        let original = vec![existing_vertex(0.0, 10)];
+        let result = apply_lwpolyline_vertex_operations(
+            original.clone(),
+            vec![
+                LwPolylineVertexOperation::Insert { index: 1, vertex: vertex(10.0, 20) },
+                LwPolylineVertexOperation::Remove { index: 99 },
+            ],
+        );
+        assert!(result.is_err());
+        assert_eq!(original.len(), 1);
+        assert_eq!(original[0].vertex_id, 10);
     }
 }
