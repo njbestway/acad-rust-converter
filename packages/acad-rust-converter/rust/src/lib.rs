@@ -348,6 +348,25 @@ pub fn dwg_entity_page(handle: u32, offset: u32, limit: u32) -> Result<String, J
     })
 }
 
+/// Return exact hexadecimal handles for one page of model-space entities.
+/// This sidecar is intentionally separate from entity JSON: common.handle is
+/// currently serialized as a JSON number and may lose u64 precision in JS.
+#[wasm_bindgen]
+pub fn dwg_entity_handle_page_json(
+    handle: u32,
+    offset: u32,
+    limit: u32,
+) -> Result<String, JsValue> {
+    guard(|| with_document(handle, |doc| {
+        let handles: Vec<String> = doc.model_space_entities()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .map(|entity| format!("{:X}", entity.common().handle.value()))
+            .collect();
+        to_json("acadrust entity handle page serialize failed", &handles)
+    }))
+}
+
 /// One page of a named block definition's entities (see
 /// `CadDocument::entities_in_block`), for the same bounded-payload reason as
 /// `dwg_entity_page` but scoped to block geometry instead of model space.
