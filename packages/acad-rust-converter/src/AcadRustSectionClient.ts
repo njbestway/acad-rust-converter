@@ -72,6 +72,8 @@ export interface AcadRustDocumentClient {
   updateLineGeometry(handle: number, entityHandle: string, geometry: { start?: AcadRustPoint3d; end?: AcadRustPoint3d }): Promise<void>
   /** Typed CIRCLE/ARC geometry update; preserves all handle-bearing fields. */
   updateCircleArcGeometry(handle: number, entityHandle: string, geometry: AcadRustCircleArcGeometryPatch): Promise<void>
+  /** Typed INSERT placement update; leaves block and ATTRIB references untouched. */
+  updateInsertPlacement(handle: number, entityHandle: string, patch: AcadRustInsertPlacementPatch): Promise<void>
   /** Patch reference-safe common properties without round-tripping embedded handles. */
   updateEntityCommon(handle: number, entityHandle: string, patch: AcadRustEntityCommonPatch): Promise<void>
   /** Remove an entity by its lossless hexadecimal DWG handle. */
@@ -105,6 +107,13 @@ export interface AcadRustCircleArcGeometryPatch {
   radius?: number
   startAngle?: number
   endAngle?: number
+}
+
+export interface AcadRustInsertPlacementPatch {
+  insertPoint?: AcadRustPoint3d
+  scale?: [number, number, number]
+  rotation?: number
+  normal?: AcadRustPoint3d
 }
 
 export interface AcadRustEntityCommonPatch {
@@ -479,6 +488,20 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
         start_angle: geometry.startAngle,
         end_angle: geometry.endAngle
       })
+    })
+  }
+
+  async updateInsertPlacement(
+    handle: number,
+    entityHandle: string,
+    patch: AcadRustInsertPlacementPatch
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-insert-placement',
+      handle,
+      entityHandle,
+      patchJson: JSON.stringify(patch)
     })
   }
 
