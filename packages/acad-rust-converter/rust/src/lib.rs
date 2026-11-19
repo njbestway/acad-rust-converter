@@ -1065,9 +1065,24 @@ pub fn dwg_dimension_measurement_json(handle: u32, entity_handle_hex: &str) -> R
                 acadrust::EntityType::Dimension(dimension) => dimension,
                 _ => return Err(JsValue::from_str("The target entity is not DIMENSION.")),
             };
+            let subtype = match dimension {
+                acadrust::entities::dimension::Dimension::Aligned(_) => "DIMENSION_ALIGNED",
+                acadrust::entities::dimension::Dimension::Linear(_) => "DIMENSION_LINEAR",
+                acadrust::entities::dimension::Dimension::Radius(_) => "DIMENSION_RADIUS",
+                acadrust::entities::dimension::Dimension::Diameter(_) => "DIMENSION_DIAMETER",
+                acadrust::entities::dimension::Dimension::Angular2Ln(_) => "DIMENSION_ANGULAR_2LINE",
+                acadrust::entities::dimension::Dimension::Angular3Pt(_) => "DIMENSION_ANGULAR_3POINT",
+                acadrust::entities::dimension::Dimension::Ordinate(_) => "DIMENSION_ORDINATE",
+                acadrust::entities::dimension::Dimension::Arc(_) => "ARC_DIMENSION",
+                acadrust::entities::dimension::Dimension::LargeRadial(_) => "LARGE_RADIAL_DIMENSION",
+            };
+            let measurement = dimension.measurement();
+            if !measurement.is_finite() {
+                return Err(JsValue::from_str("DIMENSION geometry produced a non-finite measurement."));
+            }
             let value = serde_json::json!({
-                "subtype": dimension.entity_type(),
-                "measurement": dimension.measurement(),
+                "subtype": subtype,
+                "measurement": measurement,
                 "cachedMeasurement": dimension.base().actual_measurement,
                 "blockName": dimension.base().block_name,
             });
