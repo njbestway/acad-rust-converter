@@ -66,6 +66,9 @@ export interface AcadRustDocumentClient {
   ensureXrecord(handle: number, ownerHandle: string, key: string): Promise<string>
   xrecord<T = unknown>(handle: number, ownerHandle: string, key: string): Promise<T | null>
   setXrecordEntries(handle: number, ownerHandle: string, key: string, entries: unknown[]): Promise<void>
+  setEntityReactors(handle: number, entityHandle: string, reactorHandles: string[]): Promise<void>
+  setExtensionDictionaryEntry(handle: number, ownerHandle: string, key: string, targetHandle: string, hardOwner?: boolean): Promise<string>
+  removeExtensionDictionaryEntry(handle: number, ownerHandle: string, key: string): Promise<boolean>
   /** Read one entity by its lossless hexadecimal DWG handle. */
   getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
   /** Typed geometry update for LINE endpoints; leaves all reference fields untouched. */
@@ -326,6 +329,55 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       result,
       'block-entities-batch'
     )
+  }
+
+  async setEntityReactors(
+    handle: number,
+    entityHandle: string,
+    reactorHandles: string[]
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'set-entity-reactors',
+      handle,
+      entityHandle,
+      reactors: JSON.stringify(reactorHandles)
+    })
+  }
+
+  async setExtensionDictionaryEntry(
+    handle: number,
+    ownerHandle: string,
+    key: string,
+    targetHandle: string,
+    hardOwner = false
+  ): Promise<string> {
+    const result = await this.request({
+      id: 0,
+      kind: 'set-dictionary-entry',
+      handle,
+      ownerHandle,
+      key,
+      targetHandle,
+      hardOwner
+    })
+    if (result.entityHandle == null) throw new Error('acad-rust worker returned no dictionary handle.')
+    return result.entityHandle
+  }
+
+  async removeExtensionDictionaryEntry(
+    handle: number,
+    ownerHandle: string,
+    key: string
+  ): Promise<boolean> {
+    const result = await this.request({
+      id: 0,
+      kind: 'remove-dictionary-entry',
+      handle,
+      ownerHandle,
+      key
+    })
+    return result.removed === true
   }
 
   async objectXdata<T = unknown>(handle: number, objectHandle: string): Promise<T | null> {
