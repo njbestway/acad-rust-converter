@@ -89,6 +89,8 @@ export interface AcadRustDocumentClient {
   updateCircleArcGeometry(handle: number, entityHandle: string, geometry: AcadRustCircleArcGeometryPatch): Promise<void>
   /** Typed ELLIPSE geometry update; preserves common/reference fields. */
   updateEllipseGeometry(handle: number, entityHandle: string, geometry: AcadRustEllipseGeometryPatch): Promise<void>
+  /** Typed NURBS SPLINE update; preserves common/reference fields and DWG-only state. */
+  updateSplineGeometry(handle: number, entityHandle: string, geometry: AcadRustSplineGeometryPatch): Promise<void>
   /** Typed INSERT placement update; leaves block and ATTRIB references untouched. */
   updateInsertPlacement(handle: number, entityHandle: string, patch: AcadRustInsertPlacementPatch): Promise<void>
   updateInsertAttributeValue(handle: number, insertHandle: string, tag: string, value: string): Promise<void>
@@ -228,6 +230,32 @@ export interface AcadRustCircleArcGeometryPatch {
   radius?: number
   startAngle?: number
   endAngle?: number
+}
+
+export interface AcadRustSplineFlagsPatch {
+  closed?: boolean
+  periodic?: boolean
+  rational?: boolean
+  planar?: boolean
+  linear?: boolean
+}
+
+export interface AcadRustSplineGeometryPatch {
+  degree?: number
+  flags?: AcadRustSplineFlagsPatch
+  knots?: number[]
+  controlPoints?: AcadRustPoint3d[]
+  weights?: number[]
+  fitPoints?: AcadRustPoint3d[]
+  normal?: AcadRustPoint3d
+  knotTolerance?: number
+  controlTolerance?: number
+  fitTolerance?: number
+  beginTangent?: AcadRustPoint3d
+  endTangent?: AcadRustPoint3d
+  knotParameterization?: number
+  cvFrameVisible?: boolean
+  dwgFlags1?: number
 }
 
 export interface AcadRustEllipseGeometryPatch {
@@ -740,6 +768,36 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
         start_parameter: geometry.startParameter,
         end_parameter: geometry.endParameter,
         normal: geometry.normal
+      })
+    })
+  }
+
+  async updateSplineGeometry(
+    handle: number,
+    entityHandle: string,
+    geometry: AcadRustSplineGeometryPatch
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-spline',
+      handle,
+      entityHandle,
+      geometryJson: JSON.stringify({
+        degree: geometry.degree,
+        flags: geometry.flags,
+        knots: geometry.knots,
+        control_points: geometry.controlPoints,
+        weights: geometry.weights,
+        fit_points: geometry.fitPoints,
+        normal: geometry.normal,
+        knot_tolerance: geometry.knotTolerance,
+        control_tolerance: geometry.controlTolerance,
+        fit_tolerance: geometry.fitTolerance,
+        begin_tangent: geometry.beginTangent,
+        end_tangent: geometry.endTangent,
+        knot_parameterization: geometry.knotParameterization,
+        cv_frame_visible: geometry.cvFrameVisible,
+        dwg_flags1: geometry.dwgFlags1
       })
     })
   }
