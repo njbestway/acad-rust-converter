@@ -144,7 +144,7 @@ export function normalizeDwgHandle(handle: DwgHandleLike): string {
     throw new Error(`Invalid DWG handle '${String(handle)}': ${detail}.`)
   }
 
-  if (value < 0n || value > 0xffff_ffff_ffff_ffffn) {
+  if (value < BigInt(0) || value > BigInt('18446744073709551615')) {
     throw new Error('DWG handle must fit in an unsigned 64-bit integer.')
   }
   return value.toString(16).toUpperCase()
