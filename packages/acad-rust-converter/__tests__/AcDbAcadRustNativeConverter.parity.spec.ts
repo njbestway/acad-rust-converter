@@ -168,6 +168,15 @@ class FixtureClient implements AcadRustDocumentClient {
     }))
   }
 
+  async entityHandlePage(_handle: number, offset: number, limit: number): Promise<string[]> {
+    if (offset !== 0) return []
+    return this.page.slice(0, limit).map(entity => {
+      const value = Object.values(entity)[0] as any
+      const handle = value?.common?.handle
+      return typeof handle === 'number' ? handle.toString(16).toUpperCase() : String(handle ?? '')
+    })
+  }
+
   async blockEntityHandles(_handle: number, _blockName: string): Promise<string[]> {
     return []
   }
