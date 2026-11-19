@@ -34,5 +34,6 @@ export {
   AcDbBlockTableRecord,
   type AcDbHandle,
   type AcDbDatabaseEvent,
-  type AcDbDatabaseListener
+  type AcDbDatabaseListener,
+  type AcDbEntityPatch
 } from './compatibility/AcDbDatabase'
