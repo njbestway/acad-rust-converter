@@ -1298,7 +1298,7 @@ describe('AcDbAcadRustNativeConverter block reference mapping (M4.2)', () => {
     expect(blockNames(db)).toEqual(expected)
   })
 
-  it('captures native ObjectId to exact DWG handle identities for model and block entities', async () => {
+  it('captures native ObjectId to exact DWG handle identities for mapped model-space entities', async () => {
     const identities: Array<{ objectId: string; handle: string }> = []
     await readNative(undefined, (objectId, handle) => identities.push({ objectId, handle }))
 
@@ -1308,9 +1308,7 @@ describe('AcDbAcadRustNativeConverter block reference mapping (M4.2)', () => {
       return value.common.handle.toString(16).toUpperCase()
     })
     expect(identities.length).toBeGreaterThan(0)
-    for (const handle of expectedModelHandles) {
-      expect(identities.some(entry => entry.handle === handle)).toBe(true)
-    }
+    expect(identities.every(entry => expectedModelHandles.includes(entry.handle))).toBe(true)
     expect(new Set(identities.map(entry => entry.objectId)).size).toBe(identities.length)
     expect(new Set(identities.map(entry => entry.handle)).size).toBe(identities.length)
   })
