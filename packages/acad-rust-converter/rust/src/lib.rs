@@ -1105,6 +1105,131 @@ pub fn dwg_update_attdef_default_value(
     })
 }
 
+fn document_has_handle(doc: &CadDocument, handle: acadrust::types::Handle) -> bool {
+    doc.get_entity(handle).is_some()
+        || doc.objects.contains_key(&handle)
+        || doc.layers.iter().any(|entry| entry.handle == handle)
+        || doc.line_types.iter().any(|entry| entry.handle == handle)
+        || doc.text_styles.iter().any(|entry| entry.handle == handle)
+        || doc.dim_styles.iter().any(|entry| entry.handle == handle)
+        || doc.app_ids.iter().any(|entry| entry.handle == handle)
+        || doc.views.iter().any(|entry| entry.handle == handle)
+        || doc.vports.iter().any(|entry| entry.handle == handle)
+        || doc.ucss.iter().any(|entry| entry.handle == handle)
+        || doc.vx_table.iter().any(|entry| entry.handle == handle)
+        || doc.block_records.iter().any(|entry| {
+            entry.handle == handle
+                || entry.block_entity_handle == handle
+                || entry.block_end_handle == handle
+        })
+}
+
+/// Replace an entity's reactor list from exact hexadecimal handles. All target
+/// handles must resolve to a resident entity, table record, or OBJECTS entry.
+#[wasm_bindgen]
+pub fn dwg_set_entity_reactors_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    reactors_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let reactor_hexes: Vec<String> = serde_json::from_str(reactors_json)
+            .map_err(to_js("reactor handle list parse failed"))?;
+        let mut reactors = Vec::with_capacity(reactor_hexes.len());
+        let mut seen = std::collections::HashSet::new();
+        for hex in reactor_hexes {
+            let reactor = parse_handle_hex(&hex)?;
+            if reactor == entity_handle {
+                return Err(JsValue::from_str("An entity cannot be its own reactor."));
+            }
+            if !seen.insert(reactor.value()) {
+                return Err(JsValue::from_str("Duplicate reactor handles are not allowed."));
+            }
+            reactors.push(reactor);
+        }
+        with_document_mut(handle, |doc| {
+            for reactor in &reactors {
+                if !document_has_handle(doc, *reactor) {
+                    return Err(JsValue::from_str(&format!(
+                        "Reactor handle {:X} does not resolve in the resident document.",
+                        reactor.value()
+                    )));
+                }
+            }
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("Entity handle was not found."))?;
+            entity.common_mut().reactors = reactors;
+            Ok(())
+        })
+    })
+}
+
+/// Upsert one key in the owner's Extension Dictionary. The target must already
+/// exist; the method never creates dangling dictionary references.
+#[wasm_bindgen]
+pub fn dwg_set_extension_dictionary_entry(
+    handle: u32,
+    owner_handle_hex: &str,
+    key: &str,
+    target_handle_hex: &str,
+    hard_owner: bool,
+) -> Result<String, JsValue> {
+    guard(|| {
+        let owner = parse_handle_hex(owner_handle_hex)?;
+        let target = parse_handle_hex(target_handle_hex)?;
+        if key.trim().is_empty() {
+            return Err(JsValue::from_str("Dictionary key cannot be empty."));
+        }
+        with_document_mut(handle, |doc| {
+            if !document_has_handle(doc, target) {
+                return Err(JsValue::from_str("Dictionary target handle does not resolve."));
+            }
+            let dictionary_handle = doc.ensure_extension_dictionary(owner);
+            match doc.objects.get_mut(&dictionary_handle) {
+                Some(acadrust::objects::ObjectType::Dictionary(dictionary)) => {
+                    if let Some((_, value)) = dictionary.entries.iter_mut()
+                        .find(|(existing, _)| existing.eq_ignore_ascii_case(key)) {
+                        *value = target;
+                    } else {
+                        dictionary.add_entry(key, target);
+                    }
+                    dictionary.set_entry_hard_owner(key, hard_owner);
+                    Ok(format!("{:X}", dictionary_handle.value()))
+                }
+                _ => Err(JsValue::from_str("Owner Extension Dictionary is missing or has an invalid type.")),
+            }
+        })
+    })
+}
+
+/// Remove a key from the owner's Extension Dictionary without deleting its
+/// target object. Empty dictionaries remain attached for safe later reuse.
+#[wasm_bindgen]
+pub fn dwg_remove_extension_dictionary_entry(
+    handle: u32,
+    owner_handle_hex: &str,
+    key: &str,
+) -> Result<bool, JsValue> {
+    guard(|| {
+        let owner = parse_handle_hex(owner_handle_hex)?;
+        with_document_mut(handle, |doc| {
+            let Some(dictionary_handle) = doc.extension_dictionary_handle(owner) else {
+                return Ok(false);
+            };
+            match doc.objects.get_mut(&dictionary_handle) {
+                Some(acadrust::objects::ObjectType::Dictionary(dictionary)) => {
+                    let before = dictionary.entries.len();
+                    dictionary.entries.retain(|(existing, _)| !existing.eq_ignore_ascii_case(key));
+                    dictionary.hard_owner_entries.retain(|existing| !existing.eq_ignore_ascii_case(key));
+                    Ok(dictionary.entries.len() != before)
+                }
+                _ => Err(JsValue::from_str("Owner Extension Dictionary has an invalid type.")),
+            }
+        })
+    })
+}
+
 // Update only reference-safe common properties. Geometry and handle-bearing
 /// fields are deliberately excluded from this patch protocol so JS number
 /// precision cannot corrupt embedded u64 references.
