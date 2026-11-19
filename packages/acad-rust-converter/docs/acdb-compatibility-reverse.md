@@ -18,17 +18,17 @@ The current native path is:
 
 `DWG bytes -> Rust CadDocument -> section/entity JSON -> AcDbDatabase`
 
-The TypeScript mapper in `AcDbAcadRustNativeConverter.ts` creates MLightCAD records and currently re-derives native ObjectIds in several paths. The Rust bridge now exposes a first mutation slice for the resident `CadDocument`: model-space entity creation from acadrust serde JSON, entity erase by hexadecimal handle, nested transaction begin/commit/abort, and native DWG serialization through `DwgWriter::write_to_vec` (verified against the pinned acadrust 0.6.6 source). The worker/client transport carries these operations. Existing-entity updates, table/object/dictionary mutations, and a complete AcDb façade are not implemented yet.
+The TypeScript mapper in `AcDbAcadRustNativeConverter.ts` creates MLightCAD records and currently re-derives native ObjectIds in several paths. The Rust bridge exposes model-space entity creation, entity lookup by hexadecimal handle, entity erase, nested transaction begin/commit/abort, and native DWG serialization through `DwgWriter::write_to_vec` (checked against the pinned acadrust 0.6.6 source). Existing entities can be patched in-place for a limited set of common properties (`layer`, `linetype`, `linetype_scale`, `invisible`). This patch deliberately excludes geometry and handle-bearing fields to avoid corrupting u64 references after JavaScript JSON parsing. The worker/client transport carries these operations. `AcDbDatabase` and handle-stable `AcDbEntity` TypeScript proxies now delegate to the resident Rust document; they do not own a second CAD database.
 
 Consequently, a complete reverse writer cannot safely be implemented only by reversing the existing TypeScript field assignments. It needs a Rust-side mutation/write contract as well.
 
 ## Required next slices
 
 1. **Identity propagation:** route every mapped object through one shared `ObjectIdentityMap`; stop generating unrelated IDs when the source handle is known. Preserve Owner, block-record, dictionary, reactor, XData and extension-dictionary references.
-2. **Compatibility façade:** add AcDb-style database/table/entity/object proxies over the current data-model objects. Proxies must not create a second authoritative CAD database.
-3. **Mutation protocol (in progress):** extend the initial create/erase/transaction operations to typed updates, symbol-table edits, block/table/object/dictionary mutations, and validated reference changes. Each operation must run against the resident `CadDocument` and return authoritative identities.
+2. **Compatibility façade (first slice added):** `AcDbDatabase` and `AcDbEntity` proxies now delegate open/read/common-property patch/append/erase/transaction/save to the resident `CadDocument`. `AcDbBlockTable`, `AcDbBlockTableRecord`, symbol-table, and non-entity object proxies remain outstanding.
+3. **Mutation protocol (in progress):** extend the initial create/erase/common-property patch/transaction operations to typed geometry updates, symbol-table edits, block/table/object/dictionary mutations, and validated reference changes. Each operation must run against the resident `CadDocument` and return authoritative identities.
 4. **Reverse serialization (writer wired, validation pending):** `dwg_save` now calls the pinned acadrust 0.6.6 `DwgWriter::write_to_vec`. Add native DWG round-trip tests and AutoCAD open/AUDIT validation before treating output as production-safe.
-5. **Round-trip tests:** compare handles, owners, block references, nested inserts, attributes, XData, dictionaries, tables, hatches, dimensions and unknown/proxy objects. A successful parse alone is not proof that AutoCAD can open the output. The new WASM mutation path has not yet been compiled or runtime-tested in this environment.
+5. **Round-trip tests:** compare handles, owners, block references, nested inserts, attributes, XData, dictionaries, tables, hatches, dimensions and unknown/proxy objects. A successful parse alone is not proof that AutoCAD can open the output. The new WASM mutation path and TypeScript façade have not yet been compiled or runtime-tested in this environment. A Jest compatibility façade spec has been added but not executed.
 
 ## Known blocker: u64 handles in JSON
 
