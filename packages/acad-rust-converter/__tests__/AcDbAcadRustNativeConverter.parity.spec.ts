@@ -219,6 +219,8 @@ class FixtureClient implements AcadRustDocumentClient {
     _geometry: any
   ): Promise<void> {}
 
+  async updateInsertPlacement(): Promise<void> {}
+
   async updateCircleArcGeometry(
     _handle: number,
     _entityHandle: string,
