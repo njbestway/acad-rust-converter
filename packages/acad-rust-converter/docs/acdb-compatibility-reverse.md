@@ -37,3 +37,21 @@ The existing `AcadRustEntityCommon` and table model types describe handles as Ty
 ## Scope discipline
 
 Do not drop unknown/proxy objects just because the viewer cannot render them. Rendering support and serialization preservation are separate capabilities. Do not treat `@mlightcad/data-model` as a second source of truth: the acadrust document remains authoritative for the reverse-write path.
+
+
+## Follow-up implementation: identity snapshots and typed geometry
+
+The compatibility façade now exposes its `ObjectIdentityMap` through `AcDbDatabase.identities` and provides `bindObjectIdentity`, `bindObjectIdentities`, `getHandleForObjectId`, and `getObjectIdForHandle`. Batch binding is atomic: a conflicting pair leaves the existing map unchanged. The façade snapshots the identity map alongside each nested Rust transaction; abort restores the corresponding snapshot, and erasing an entity removes its mapped identity.
+
+This is an explicit bridge API, not yet automatic identity capture from every `AcDbAcadRustNativeConverter` mapper. That integration still requires the converter to bind each native record at the moment its DWG handle becomes associated with the resulting MLightCAD ObjectId.
+
+The typed geometry mutation set now includes LINE endpoints and CIRCLE/ARC center/radius/angle fields. These are Rust-side in-place mutations addressed by the exact hexadecimal entity handle; they do not replace the entity or round-trip its common/reference fields through JavaScript. CIRCLE rejects arc angle fields, coordinates and angles must be finite, and radii must be finite and positive. The façade and worker protocol expose these operations.
+
+## Remaining work across the five tracks
+
+- Lossless u64 transport is not complete for every section/object/entity reference. Existing broad section JSON still contains numeric handle fields. Exact handle strings are currently used for the façade's entity addressing, block membership enumeration and the new mutation routes.
+- The reverse mapping registry is not yet wired into every converter mapper.
+- BlockTable/BlockTableRecord remain read-only; block creation, edit, erase and INSERT reference maintenance are not implemented.
+- More typed geometry/property patch families remain to be added (including LWPOLYLINE/POLYLINE, ELLIPSE, SPLINE, TEXT/MTEXT, INSERT and dimensions).
+- Dictionary, reactor, XData and extension-dictionary mutation/reference maintenance remain outstanding. Existing resident objects should be preserved in-place until typed operations exist; do not deserialize and replace arbitrary handle-bearing object JSON.
+- Rust/TypeScript build, Jest, native DWG round-trip and AutoCAD open/AUDIT validation are still required. No passing result is implied by the presence of tests.
