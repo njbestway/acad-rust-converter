@@ -858,6 +858,128 @@ pub fn dwg_remove_empty_block_record(handle: u32, block_name: &str) -> Result<bo
     }))
 }
 
+/// Read the XDATA collection attached to any resident entity/table/object handle.
+#[wasm_bindgen]
+pub fn dwg_object_xdata_json(handle: u32, object_handle_hex: &str) -> Result<String, JsValue> {
+    guard(|| {
+        let object_handle = parse_handle_hex(object_handle_hex)?;
+        with_document(handle, |doc| {
+            to_json("acadrust object XDATA serialize failed", &doc.object_xdata(object_handle))
+        })
+    })
+}
+
+/// Upsert one application-scoped XDATA record without replacing other apps.
+#[wasm_bindgen]
+pub fn dwg_set_object_xdata_record_json(
+    handle: u32,
+    object_handle_hex: &str,
+    record_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let object_handle = parse_handle_hex(object_handle_hex)?;
+        let record: acadrust::xdata::ExtendedDataRecord = serde_json::from_str(record_json)
+            .map_err(to_js("XDATA record parse failed"))?;
+        if record.application_name.trim().is_empty() {
+            return Err(JsValue::from_str("XDATA application name cannot be empty."));
+        }
+        with_document_mut(handle, |doc| {
+            doc.set_object_xdata_record(object_handle, record);
+            Ok(())
+        })
+    })
+}
+
+/// Remove one application's XDATA, including its verbatim DWG EED payload.
+#[wasm_bindgen]
+pub fn dwg_remove_object_xdata_record(
+    handle: u32,
+    object_handle_hex: &str,
+    application_name: &str,
+) -> Result<bool, JsValue> {
+    guard(|| {
+        let object_handle = parse_handle_hex(object_handle_hex)?;
+        with_document_mut(handle, |doc| {
+            Ok(doc.remove_object_xdata_record(object_handle, application_name))
+        })
+    })
+}
+
+/// Ensure an Extension Dictionary is attached to the specified owner.
+#[wasm_bindgen]
+pub fn dwg_ensure_extension_dictionary(
+    handle: u32,
+    owner_handle_hex: &str,
+) -> Result<String, JsValue> {
+    guard(|| {
+        let owner = parse_handle_hex(owner_handle_hex)?;
+        with_document_mut(handle, |doc| {
+            let dictionary = doc.ensure_extension_dictionary(owner);
+            Ok(format!("{:X}", dictionary.value()))
+        })
+    })
+}
+
+/// Ensure a named XRecord in an owner's Extension Dictionary.
+#[wasm_bindgen]
+pub fn dwg_ensure_xrecord(
+    handle: u32,
+    owner_handle_hex: &str,
+    key: &str,
+) -> Result<String, JsValue> {
+    guard(|| {
+        let owner = parse_handle_hex(owner_handle_hex)?;
+        if key.trim().is_empty() {
+            return Err(JsValue::from_str("XRecord key cannot be empty."));
+        }
+        with_document_mut(handle, |doc| {
+            let record = doc.ensure_xrecord(owner, key);
+            Ok(format!("{:X}", record.value()))
+        })
+    })
+}
+
+/// Read a named XRecord from an owner's Extension Dictionary.
+#[wasm_bindgen]
+pub fn dwg_xrecord_json(
+    handle: u32,
+    owner_handle_hex: &str,
+    key: &str,
+) -> Result<String, JsValue> {
+    guard(|| {
+        let owner = parse_handle_hex(owner_handle_hex)?;
+        with_document(handle, |doc| {
+            let record = doc.xrecord(owner, key);
+            to_json("acadrust XRecord serialize failed", &record)
+        })
+    })
+}
+
+/// Replace the entries of one named XRecord. Handle references are rebuilt
+/// from the typed entry list rather than reusing a stale DWG object-reference
+/// stream.
+#[wasm_bindgen]
+pub fn dwg_set_xrecord_entries_json(
+    handle: u32,
+    owner_handle_hex: &str,
+    key: &str,
+    entries_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let owner = parse_handle_hex(owner_handle_hex)?;
+        let entries: Vec<acadrust::objects::XRecordEntry> = serde_json::from_str(entries_json)
+            .map_err(to_js("XRecord entries parse failed"))?;
+        with_document_mut(handle, |doc| {
+            let record = doc.xrecord_mut(owner, key)
+                .ok_or_else(|| JsValue::from_str("Named XRecord does not exist."))?;
+            record.entries = entries;
+            record.object_references.clear();
+            record.preserve_object_reference_stream = false;
+            Ok(())
+        })
+    })
+}
+
 // Update only reference-safe common properties. Geometry and handle-bearing
 /// fields are deliberately excluded from this patch protocol so JS number
 /// precision cannot corrupt embedded u64 references.
