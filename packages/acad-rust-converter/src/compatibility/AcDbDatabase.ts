@@ -1,0 +1,223 @@
+import {
+  acadRustEntityKind,
+  type AcadRustEntity
+} from '../model/acadrust-model'
+import {
+  type AcadRustDocumentClient,
+  type AcadRustEntityCommonPatch
+} from '../AcadRustSectionClient'
+import {
+  normalizeDwgHandle,
+  type DwgHandleLike
+} from './ObjectIdentityMap'
+
+export type AcDbHandle = string
+
+export type AcDbDatabaseEvent =
+  | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
+  | { type: 'objectModified'; handle: AcDbHandle; entity: AcDbEntity; patch: AcadRustEntityCommonPatch }
+  | { type: 'objectErased'; handle: AcDbHandle }
+  | { type: 'transactionStarted' }
+  | { type: 'transactionCommitted' }
+  | { type: 'transactionAborted' }
+  | { type: 'databaseSaved' }
+
+export type AcDbDatabaseListener = (event: AcDbDatabaseEvent) => void
+
+/**
+ * AcDbDatabase façade over one resident acadrust CadDocument.
+ *
+ * This class owns no CAD entity storage. Every read/write is delegated to the
+ * worker-backed document client and the Rust CadDocument addressed by handle.
+ */
+export class AcDbDatabase {
+  private readonly listeners = new Set<AcDbDatabaseListener>()
+  private closed = false
+
+  private constructor(
+    private readonly client: AcadRustDocumentClient,
+    readonly documentHandle: number
+  ) {}
+
+  static async open(
+    client: AcadRustDocumentClient,
+    data: ArrayBuffer
+  ): Promise<AcDbDatabase> {
+    const handle = await client.open(data)
+    return new AcDbDatabase(client, handle)
+  }
+
+  on(listener: AcDbDatabaseListener): () => void {
+    this.assertOpen()
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
+
+  off(listener: AcDbDatabaseListener): void {
+    this.listeners.delete(listener)
+  }
+
+  getEntity(handle: DwgHandleLike): AcDbEntity {
+    this.assertOpen()
+    return new AcDbEntity(this, normalizeDwgHandle(handle))
+  }
+
+  async addEntity(entity: AcadRustEntity): Promise<AcDbEntity> {
+    this.assertOpen()
+    const handle = await this.client.addEntity(
+      this.documentHandle,
+      JSON.stringify(entity)
+    )
+    const proxy = new AcDbEntity(this, normalizeDwgHandle(handle))
+    this.emit({ type: 'objectAppended', handle: proxy.handle, entity: proxy })
+    return proxy
+  }
+
+  async eraseEntity(handle: DwgHandleLike): Promise<boolean> {
+    this.assertOpen()
+    const canonical = normalizeDwgHandle(handle)
+    const removed = await this.client.removeEntity(this.documentHandle, canonical)
+    if (removed) this.emit({ type: 'objectErased', handle: canonical })
+    return removed
+  }
+
+  async beginTransaction(): Promise<void> {
+    this.assertOpen()
+    await this.client.beginTransaction(this.documentHandle)
+    this.emit({ type: 'transactionStarted' })
+  }
+
+  async commitTransaction(): Promise<void> {
+    this.assertOpen()
+    await this.client.commitTransaction(this.documentHandle)
+    this.emit({ type: 'transactionCommitted' })
+  }
+
+  async abortTransaction(): Promise<void> {
+    this.assertOpen()
+    await this.client.abortTransaction(this.documentHandle)
+    this.emit({ type: 'transactionAborted' })
+  }
+
+  async transaction<T>(action: () => Promise<T>): Promise<T> {
+    await this.beginTransaction()
+    try {
+      const result = await action()
+      await this.commitTransaction()
+      return result
+    } catch (error) {
+      await this.abortTransaction()
+      throw error
+    }
+  }
+
+  async save(): Promise<ArrayBuffer> {
+    this.assertOpen()
+    const bytes = await this.client.save(this.documentHandle)
+    this.emit({ type: 'databaseSaved' })
+    return bytes
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return
+    await this.client.close(this.documentHandle)
+    this.closed = true
+    this.listeners.clear()
+  }
+
+  /** @internal Entity proxy bridge. */
+  async readEntity(handle: AcDbHandle): Promise<AcadRustEntity> {
+    this.assertOpen()
+    return this.client.getEntity(this.documentHandle, handle)
+  }
+
+  /** @internal Entity proxy bridge. */
+  async patchEntity(
+    handle: AcDbHandle,
+    patch: AcadRustEntityCommonPatch
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.updateEntityCommon(this.documentHandle, handle, patch)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch })
+  }
+
+  private emit(event: AcDbDatabaseEvent): void {
+    for (const listener of this.listeners) listener(event)
+  }
+
+  private assertOpen(): void {
+    if (this.closed) throw new Error('AcDbDatabase is closed.')
+  }
+}
+
+/**
+ * Handle-stable AcDbEntity proxy. It fetches the authoritative entity from the
+ * resident CadDocument on demand and never stores a second mutable entity copy.
+ */
+export class AcDbEntity {
+  constructor(
+    private readonly database: AcDbDatabase,
+    readonly handle: AcDbHandle
+  ) {}
+
+  async getData(): Promise<AcadRustEntity> {
+    return this.database.readEntity(this.handle)
+  }
+
+  async getClassName(): Promise<string> {
+    const data = await this.getData()
+    return acadRustEntityKind(data) ?? 'Unknown'
+  }
+
+  async getLayer(): Promise<string> {
+    return this.readCommon<string>('layer')
+  }
+
+  async setLayer(layer: string): Promise<void> {
+    await this.database.patchEntity(this.handle, { layer })
+  }
+
+  async getLinetype(): Promise<string> {
+    return this.readCommon<string>('linetype')
+  }
+
+  async setLinetype(linetype: string): Promise<void> {
+    await this.database.patchEntity(this.handle, { linetype })
+  }
+
+  async getLinetypeScale(): Promise<number> {
+    return this.readCommon<number>('linetype_scale')
+  }
+
+  async setLinetypeScale(linetypeScale: number): Promise<void> {
+    await this.database.patchEntity(this.handle, { linetypeScale })
+  }
+
+  async isInvisible(): Promise<boolean> {
+    return this.readCommon<boolean>('invisible')
+  }
+
+  async setInvisible(invisible: boolean): Promise<void> {
+    await this.database.patchEntity(this.handle, { invisible })
+  }
+
+  async erase(): Promise<boolean> {
+    return this.database.eraseEntity(this.handle)
+  }
+
+  private async readCommon<T>(property: string): Promise<T> {
+    const entity = await this.getData()
+    const kind = acadRustEntityKind(entity)
+    if (!kind) throw new Error('Invalid acadrust EntityType payload.')
+    const payload = entity[kind]
+    if (payload == null || typeof payload !== 'object') {
+      throw new Error(`Invalid ${kind} entity payload.`)
+    }
+    const common = (payload as Record<string, unknown>).common
+    if (common == null || typeof common !== 'object') {
+      throw new Error(`Entity ${kind} has no common property block.`)
+    }
+    return (common as Record<string, unknown>)[property] as T
+  }
+}
