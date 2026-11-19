@@ -99,11 +99,12 @@ The façade now exposes XDATA read/upsert/remove, Extension Dictionary creation,
 
 ### Remaining safety boundary
 
-- There is no general Owner reassignment API: changing Owner requires moving the entity between block membership lists and updating related INSERT/attribute semantics.
-- There is no generic Reactor reverse-link maintenance; this API replaces the owning entity's reactor list only.
-- Block rename, moving entities between blocks, non-empty block deletion, dynamic-block graph editing, and multiline ATTRIB/MTEXT atomic editing remain pending.
-- Section handle indexes do not yet replace the legacy numeric handle fields in the renderer JSON. They provide a separate lossless channel for consumers that need to preserve identities/references.
-- Rust/WASM compilation, TypeScript build, Jest execution, native DWG save/reopen, AutoCAD open and AUDIT remain required. None is claimed as passed in this branch update.
+- Owner reassignment is exposed for ordinary entities through a guarded block move. It validates source membership and updates old/new BlockRecord membership lists plus entity Owner and model/paper mode. Structural markers and sub-entities are rejected; INSERT attribute sequence migration is not implied.
+- Reactor mutation currently replaces the owning object's reactor list. Automatic reverse-link maintenance on every referenced reactor object is not yet implemented.
+- Block rename, non-empty block deletion, dynamic-block graph editing and multiline ATTRIB/MTEXT atomic editing remain pending.
+- Exact handle indexes cover scalar handle fields, selected handle arrays and Dictionary entry tuples. They remain a sidecar; legacy section/entity JSON still contains numeric Handle values and is not lossless for unsafe u64 values.
+- auditRoundtrip() now compares entity payloads, BlockRecord membership, exposed symbol tables, OBJECTS and opaque-object fingerprints, XDATA, Extension Dictionary links, Reactor links, dynamic visibility, block representations, field definitions, DGN line-style side views, context scales and VX control references. This checks the acadrust writer/reader pair, not AutoCAD compatibility.
+- Rust/WASM compilation, TypeScript build, Jest execution and AutoCAD open/AUDIT remain required. None is claimed as passed in this branch update.
 
 
 The native converter also accepts an optional `identityMap: ObjectIdentityMap` config. When supplied, each successful graphical entity mapping automatically binds the newly assigned MLightCAD ObjectId to the exact DWG handle; `onObjectIdentity` remains available as an observer callback. This is currently graphical entity coverage, not a blanket identity map for symbol-table records and non-graphical OBJECTS items.
@@ -117,3 +118,10 @@ The optional converter `identityMap` now also binds the mapped LAYER, LTYPE, STY
 ### Owner reassignment / moving entities between blocks
 
 The Rust bridge now exposes `dwg_move_entity_to_block`. It refuses sub-entities and structural BLOCK/ENDBLK/SEQEND markers, validates the current owner block membership before mutation, removes stale duplicate memberships from other blocks, inserts the entity handle into the target block's membership list, and updates `common.owner_handle` plus model/paper `entity_mode`. The original entity handle, XDATA, reactors, Extension Dictionary and entity-specific references remain untouched. The TypeScript proxy exposes `AcDbEntity.moveToBlock` and `AcDbBlockTableRecord.moveEntityHere`.
+
+
+### Expanded native DWG round-trip audit
+
+The resident Rust audit now includes symbol-table snapshots (LAYER, LTYPE, STYLE, DIMSTYLE, APPID, VIEW, VPORT, UCS and VX), non-entity Extension Dictionary links, non-entity Reactor lists, annotation context-to-scale links, FIELD definitions, DGN line-style definition/component side views and ordered VX_CONTROL references. Each dimension is returned as a separate boolean in `AcadRustRoundtripAudit` in addition to aggregate `ok` and before/after fingerprints.
+
+The audit serializes the resident document to DWG bytes, reopens those bytes with acadrust, and compares deterministic snapshots. It is read-only and does not replace the active document. A passing result establishes only acadrust self-roundtrip parity; AutoCAD open and AUDIT are still required.
