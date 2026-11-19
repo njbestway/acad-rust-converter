@@ -53,6 +53,8 @@ export interface AcadRustDocumentClient {
   getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
   /** Typed geometry update for LINE endpoints; leaves all reference fields untouched. */
   updateLineGeometry(handle: number, entityHandle: string, geometry: { start?: AcadRustPoint3d; end?: AcadRustPoint3d }): Promise<void>
+  /** Typed CIRCLE/ARC geometry update; preserves all handle-bearing fields. */
+  updateCircleArcGeometry(handle: number, entityHandle: string, geometry: AcadRustCircleArcGeometryPatch): Promise<void>
   /** Patch reference-safe common properties without round-tripping embedded handles. */
   updateEntityCommon(handle: number, entityHandle: string, patch: AcadRustEntityCommonPatch): Promise<void>
   /** Remove an entity by its lossless hexadecimal DWG handle. */
@@ -65,6 +67,13 @@ export interface AcadRustDocumentClient {
   close(handle: number): Promise<void>
   /** Tear down any transport (worker) resources; safe to call more than once. */
   dispose(): void
+}
+
+export interface AcadRustCircleArcGeometryPatch {
+  center?: AcadRustPoint3d
+  radius?: number
+  startAngle?: number
+  endAngle?: number
 }
 
 export interface AcadRustEntityCommonPatch {
@@ -271,6 +280,25 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       handle,
       entityHandle,
       geometryJson: JSON.stringify(geometry)
+    })
+  }
+
+  async updateCircleArcGeometry(
+    handle: number,
+    entityHandle: string,
+    geometry: AcadRustCircleArcGeometryPatch
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-circle-arc',
+      handle,
+      entityHandle,
+      geometryJson: JSON.stringify({
+        center: geometry.center,
+        radius: geometry.radius,
+        start_angle: geometry.startAngle,
+        end_angle: geometry.endAngle
+      })
     })
   }
 
