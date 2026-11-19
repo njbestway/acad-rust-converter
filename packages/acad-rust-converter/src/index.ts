@@ -7,7 +7,11 @@ export {
   type AcDbAcadRustNativeConverterConfig
 } from './AcDbAcadRustNativeConverter'
 export {
-  type AcadRustDocumentClient
+  AcadRustWorkerDocumentClient,
+  type AcadRustDocumentClient,
+  type AcadRustWorkerClientOptions,
+  type AcadRustBlockEntityGroup,
+  type AcadRustEntityCommonPatch
 } from './AcadRustSectionClient'
 export * from './model/acadrust-model'
 export {
@@ -22,3 +26,11 @@ export {
   type DwgHandleLike,
   type ObjectIdentityEntry
 } from './compatibility/ObjectIdentityMap'
+
+export {
+  AcDbDatabase,
+  AcDbEntity,
+  type AcDbHandle,
+  type AcDbDatabaseEvent,
+  type AcDbDatabaseListener
+} from './compatibility/AcDbDatabase'
