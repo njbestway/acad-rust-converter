@@ -24,7 +24,7 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
-export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string } | { ownerBlockName: string }
+export type AcDbEntityPatch = AcadRustLwPolylineGeometryPatch | AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string } | { ownerBlockName: string }
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
