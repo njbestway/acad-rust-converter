@@ -14,6 +14,7 @@ import {
   type AcadRustSplineGeometryPatch,
   type AcadRustTextGeometryPatch,
   type AcadRustMTextGeometryPatch,
+  type AcadRustDimensionBasePatch,
   type AcadRustLwPolylineVertex,
   type AcadRustInsertPlacementPatch,
   type AcadRustDynamicBlockIndex,
@@ -29,7 +30,7 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
-export type AcDbEntityPatch = AcadRustLwPolylineGeometryPatch | AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustEllipseGeometryPatch | AcadRustSplineGeometryPatch | AcadRustTextGeometryPatch | AcadRustMTextGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string } | { ownerBlockName: string }
+export type AcDbEntityPatch = AcadRustLwPolylineGeometryPatch | AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustEllipseGeometryPatch | AcadRustSplineGeometryPatch | AcadRustTextGeometryPatch | AcadRustMTextGeometryPatch | AcadRustDimensionBasePatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string } | { ownerBlockName: string }
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
@@ -362,6 +363,13 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
+  /** @internal DIMENSION base-property proxy bridge. */
+  async patchDimensionBase(handle: AcDbHandle, patch: AcadRustDimensionBasePatch): Promise<void> {
+    this.assertOpen()
+    await this.client.updateDimensionBase(this.documentHandle, handle, patch)
+    this.emit({ type: 'objectModified', handle, entity: new AcDbEntity(this, handle), patch })
+  }
+
   /** @internal TEXT and MTEXT proxy bridges. */
   async patchTextGeometry(handle: AcDbHandle, geometry: AcadRustTextGeometryPatch): Promise<void> {
     this.assertOpen()
@@ -682,6 +690,13 @@ export class AcDbEntity {
 
   async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
     await this.database.patchLineGeometry(this.handle, { start, end })
+  }
+
+  async setDimensionProperties(patch: AcadRustDimensionBasePatch): Promise<void> {
+    if (await this.getClassName() !== 'Dimension') {
+      throw new Error(`Entity ${this.handle} is not DIMENSION.`)
+    }
+    await this.database.patchDimensionBase(this.handle, patch)
   }
 
   async setTextGeometry(geometry: AcadRustTextGeometryPatch): Promise<void> {
