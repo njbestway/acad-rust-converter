@@ -12,7 +12,8 @@ import {
   type AcadRustInsertPlacementPatch,
   type AcadRustDynamicBlockIndex,
   type AcadRustInsertSequence,
-  type AcadRustRoundtripAudit
+  type AcadRustRoundtripAudit,
+  type AcadRustOpaqueObjectInfo
 } from '../AcadRustSectionClient'
 import {
   normalizeDwgHandle,
@@ -192,6 +193,12 @@ export class AcDbDatabase {
     const bytes = await this.client.save(this.documentHandle)
     this.emit({ type: 'databaseSaved' })
     return bytes
+  }
+
+  /** List unsupported/custom OBJECTS by exact handle and raw-payload fingerprint. */
+  async getOpaqueObjectIndex(): Promise<AcadRustOpaqueObjectInfo[]> {
+    this.assertOpen()
+    return this.client.opaqueObjectIndex(this.documentHandle)
   }
 
   /** Save/reopen the resident DWG in Rust and compare key identity/relationship fingerprints. */
