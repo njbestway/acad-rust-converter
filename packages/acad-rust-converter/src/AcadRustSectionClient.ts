@@ -44,9 +44,12 @@ export interface AcadRustDocumentClient {
     handle: number,
     blockNames: string[]
   ): Promise<AcadRustBlockEntityGroup[]>
-  /** Release the resident document behind `handle`. */
   /** Add one acadrust EntityType to model space; returns its lossless hex handle. */
   addEntity(handle: number, entityJson: string): Promise<string>
+  /** Read one entity by its lossless hexadecimal DWG handle. */
+  getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
+  /** Replace one existing entity without changing its identity or owner. */
+  updateEntity(handle: number, entityHandle: string, entityJson: string): Promise<void>
   /** Remove an entity by its lossless hexadecimal DWG handle. */
   removeEntity(handle: number, entityHandle: string): Promise<boolean>
   /** Native DWG serialization of the current resident document. */
@@ -233,6 +236,15 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
     const result = await this.request({ id: 0, kind: 'add-entity', handle, entityJson })
     if (result.entityHandle == null) throw new Error('acad-rust worker returned no entity handle.')
     return result.entityHandle
+  }
+
+  async getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity> {
+    const result = await this.request({ id: 0, kind: 'get-entity', handle, entityHandle })
+    return this.parseJson<AcadRustEntity>(result, 'entity')
+  }
+
+  async updateEntity(handle: number, entityHandle: string, entityJson: string): Promise<void> {
+    await this.request({ id: 0, kind: 'update-entity', handle, entityHandle, entityJson })
   }
 
   async removeEntity(handle: number, entityHandle: string): Promise<boolean> {
