@@ -980,6 +980,73 @@ pub fn dwg_set_xrecord_entries_json(
     })
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InsertPlacementPatch {
+    insert_point: Option<Point3Patch>,
+    scale: Option<[f64; 3]>,
+    rotation: Option<f64>,
+    normal: Option<Point3Patch>,
+}
+
+/// Update INSERT placement without replacing its block or ATTRIB references.
+#[wasm_bindgen]
+pub fn dwg_update_insert_placement_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    patch_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: InsertPlacementPatch = serde_json::from_str(patch_json)
+            .map_err(to_js("INSERT placement patch JSON parse failed"))?;
+        if let Some(point) = patch.insert_point.as_ref() {
+            if ![point.x, point.y, point.z].iter().all(|v| v.is_finite()) {
+                return Err(JsValue::from_str("INSERT insertion point must be finite."));
+            }
+        }
+        if let Some(scale) = patch.scale {
+            if !scale.iter().all(|v| v.is_finite() && v.abs() > 1e-12) {
+                return Err(JsValue::from_str("INSERT scale factors must be finite and non-zero."));
+            }
+        }
+        if let Some(rotation) = patch.rotation {
+            if !rotation.is_finite() {
+                return Err(JsValue::from_str("INSERT rotation must be finite."));
+            }
+        }
+        if let Some(normal) = patch.normal.as_ref() {
+            if ![normal.x, normal.y, normal.z].iter().all(|v| v.is_finite())
+                || (normal.x * normal.x + normal.y * normal.y + normal.z * normal.z) <= 1e-24 {
+                return Err(JsValue::from_str("INSERT normal must be finite and non-zero."));
+            }
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            let insert = match entity {
+                acadrust::EntityType::Insert(insert) => insert,
+                _ => return Err(JsValue::from_str("Entity is not an INSERT.")),
+            };
+            if let Some(point) = patch.insert_point {
+                insert.insert_point = Vector3::new(point.x, point.y, point.z);
+            }
+            if let Some([x, y, z]) = patch.scale {
+                insert.set_x_scale(x);
+                insert.set_y_scale(y);
+                insert.set_z_scale(z);
+            }
+            if let Some(rotation) = patch.rotation {
+                insert.rotation = rotation;
+            }
+            if let Some(normal) = patch.normal {
+                insert.normal = Vector3::new(normal.x, normal.y, normal.z);
+            }
+            Ok(())
+        })
+    })
+}
+
 // Update only reference-safe common properties. Geometry and handle-bearing
 /// fields are deliberately excluded from this patch protocol so JS number
 /// precision cannot corrupt embedded u64 references.
