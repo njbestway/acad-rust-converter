@@ -230,6 +230,35 @@ export class AcDbDatabase {
     )
   }
 
+  /** @internal Block-table mutation bridge. */
+  async createBlockRecord(
+    name: string,
+    basePoint: AcadRustPoint3d,
+    description = ''
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.addBlockRecord(this.documentHandle, name, basePoint, description)
+  }
+
+  /** @internal Append an entity to a resident block definition. */
+  async appendBlockEntity(name: string, entity: AcadRustEntity): Promise<AcDbEntity> {
+    this.assertOpen()
+    const handle = await this.client.addEntityToBlock(
+      this.documentHandle,
+      name,
+      JSON.stringify(entity)
+    )
+    const proxy = new AcDbEntity(this, normalizeDwgHandle(handle))
+    this.emit({ type: 'objectAppended', handle: proxy.handle, entity: proxy })
+    return proxy
+  }
+
+  /** @internal Only empty, unreferenced block records may be removed. */
+  async removeEmptyBlockRecord(name: string): Promise<boolean> {
+    this.assertOpen()
+    return this.client.removeEmptyBlockRecord(this.documentHandle, name)
+  }
+
   /** @internal Block-record proxy bridge. */
   async readBlockEntityHandles(name: string): Promise<string[]> {
     this.assertOpen()
@@ -363,7 +392,7 @@ export class AcDbEntity {
 }
 
 
-/** Read-only AcDbBlockTable view over acadrust's BLOCK-RECORD table. */
+/** AcDbBlockTable proxy over acadrust's resident BLOCK-RECORD table. */
 export class AcDbBlockTable {
   constructor(private readonly database: AcDbDatabase) {}
 
@@ -378,6 +407,23 @@ export class AcDbBlockTable {
 
   async has(name: string): Promise<boolean> {
     return (await this.getAt(name)) != null
+  }
+
+  /** Create a block definition with valid BLOCK/ENDBLK structural records. */
+  async add(
+    name: string,
+    basePoint: AcadRustPoint3d = { x: 0, y: 0, z: 0 },
+    description = ''
+  ): Promise<AcDbBlockTableRecord> {
+    await this.database.createBlockRecord(name, basePoint, description)
+    const record = await this.getAt(name)
+    if (record == null) throw new Error(`Created block '${name}' could not be read back.`)
+    return record
+  }
+
+  /** Remove a block only when it has no child entities or INSERT references. */
+  async remove(name: string): Promise<boolean> {
+    return this.database.removeEmptyBlockRecord(name)
   }
 
   async getAll(): Promise<AcDbBlockTableRecord[]> {
@@ -420,6 +466,11 @@ export class AcDbBlockTableRecord {
 
   async getEntityCount(): Promise<number> {
     return (await this.getEntityHandles()).length
+  }
+
+  /** Append an entity to this block definition; Rust assigns its Handle. */
+  async appendEntity(entity: AcadRustEntity): Promise<AcDbEntity> {
+    return this.database.appendBlockEntity(this.record.name, entity)
   }
 }
 
