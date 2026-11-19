@@ -31,6 +31,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       getEntity: jest.fn().mockResolvedValue(line),
       updateEntityCommon: jest.fn().mockResolvedValue(undefined),
       updateLineGeometry: jest.fn().mockResolvedValue(undefined),
+      updateCircleArcGeometry: jest.fn().mockResolvedValue(undefined),
       addEntity: jest.fn().mockResolvedValue('2A'),
       removeEntity: jest.fn().mockResolvedValue(true),
       save: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
@@ -51,6 +52,23 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(await entity.getClassName()).toBe('Line')
     expect(await entity.getLayer()).toBe('0')
     expect(client.getEntity).toHaveBeenCalledWith(7, '2A')
+  })
+
+  it('updates CIRCLE and ARC geometry through typed reference-safe patches', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    const center = { x: 1, y: 2, z: 0 }
+
+    await entity.setCircleGeometry({ center, radius: 5 })
+    expect(client.updateCircleArcGeometry).toHaveBeenNthCalledWith(
+      1, 7, '2A', { center, radius: 5 }
+    )
+
+    await entity.setArcGeometry({ startAngle: 0.25, endAngle: 1.5 })
+    expect(client.updateCircleArcGeometry).toHaveBeenNthCalledWith(
+      2, 7, '2A', { startAngle: 0.25, endAngle: 1.5 }
+    )
   })
 
   it('patches common properties without replacing handle-bearing entity JSON', async () => {
