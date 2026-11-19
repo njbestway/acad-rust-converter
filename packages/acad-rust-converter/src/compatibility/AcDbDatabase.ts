@@ -9,7 +9,9 @@ import {
   type AcadRustDocumentClient,
   type AcadRustEntityCommonPatch,
   type AcadRustCircleArcGeometryPatch,
-  type AcadRustInsertPlacementPatch
+  type AcadRustInsertPlacementPatch,
+  type AcadRustDynamicBlockIndex,
+  type AcadRustInsertSequence
 } from '../AcadRustSectionClient'
 import {
   normalizeDwgHandle,
@@ -189,6 +191,21 @@ export class AcDbDatabase {
     const bytes = await this.client.save(this.documentHandle)
     this.emit({ type: 'databaseSaved' })
     return bytes
+  }
+
+  /** Read dynamic-block parameters, visibility states and anonymous representation links. */
+  async getDynamicBlockIndex(): Promise<AcadRustDynamicBlockIndex> {
+    this.assertOpen()
+    return this.client.dynamicBlockIndex(this.documentHandle)
+  }
+
+  /** Inspect an INSERT's embedded ATTRIB and SEQEND sequence integrity. */
+  async getInsertSequence(insertHandle: DwgHandleLike): Promise<AcadRustInsertSequence> {
+    this.assertOpen()
+    return this.client.insertSequence(
+      this.documentHandle,
+      normalizeDwgHandle(insertHandle)
+    )
   }
 
   async close(): Promise<void> {
