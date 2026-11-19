@@ -86,7 +86,10 @@ export class AcDbDatabase {
     this.assertOpen()
     const canonical = normalizeDwgHandle(handle)
     const removed = await this.client.removeEntity(this.documentHandle, canonical)
-    if (removed) this.emit({ type: 'objectErased', handle: canonical })
+    if (removed) {
+      this.identities.unbindByHandle(canonical)
+      this.emit({ type: 'objectErased', handle: canonical })
+    }
     return removed
   }
 
