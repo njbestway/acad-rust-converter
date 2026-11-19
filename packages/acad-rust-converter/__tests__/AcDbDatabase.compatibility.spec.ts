@@ -502,4 +502,43 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(await entity.getExtendedData()).toEqual([])
   })
 
+  it('rejects overlapping transaction-control operations without corrupting depth', async () => {
+    const client = createClient()
+    let releaseBegin!: () => void
+    client.beginTransaction.mockImplementationOnce(() => new Promise<void>(resolve => {
+      releaseBegin = resolve
+    }))
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const first = db.beginTransaction()
+    await expect(db.beginTransaction()).rejects.toThrow('already in flight')
+    releaseBegin()
+    await first
+    expect(db.transactionDepth).toBe(1)
+    await db.abortTransaction()
+    expect(db.transactionDepth).toBe(0)
+  })
+
+  it('does not close a database while a transaction is active', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    await db.beginTransaction()
+    await expect(db.close()).rejects.toThrow('active transactions')
+    expect(client.close).not.toHaveBeenCalled()
+    await db.abortTransaction()
+    await db.close()
+    expect(client.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('retains transaction depth when the native commit fails', async () => {
+    const client = createClient()
+    client.commitTransaction.mockRejectedValueOnce(new Error('native commit failed'))
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    await db.beginTransaction()
+    await expect(db.commitTransaction()).rejects.toThrow('native commit failed')
+    expect(db.transactionDepth).toBe(1)
+    await db.abortTransaction()
+    expect(db.transactionDepth).toBe(0)
+  })
+
+
 })
