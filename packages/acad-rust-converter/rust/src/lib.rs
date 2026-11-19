@@ -1047,6 +1047,64 @@ pub fn dwg_update_insert_placement_json(
     })
 }
 
+/// Change one single-line ATTRIB value while retaining its handle, owner,
+/// ATTDEF link, and INSERT sequence references. Multiline attributes are
+/// refused until the embedded MTEXT payload can be edited atomically too.
+#[wasm_bindgen]
+pub fn dwg_update_insert_attribute_value(
+    handle: u32,
+    insert_handle_hex: &str,
+    tag: &str,
+    value: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let insert_handle = parse_handle_hex(insert_handle_hex)?;
+        if tag.trim().is_empty() {
+            return Err(JsValue::from_str("Attribute tag cannot be empty."));
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(insert_handle)
+                .ok_or_else(|| JsValue::from_str("INSERT handle was not found."))?;
+            let insert = match entity {
+                acadrust::EntityType::Insert(insert) => insert,
+                _ => return Err(JsValue::from_str("Entity is not an INSERT.")),
+            };
+            let attribute = insert.attributes.iter_mut()
+                .find(|attribute| attribute.tag.eq_ignore_ascii_case(tag))
+                .ok_or_else(|| JsValue::from_str("INSERT attribute tag was not found."))?;
+            if attribute.is_multiline || attribute.embedded_mtext.is_some() {
+                return Err(JsValue::from_str("Multiline ATTRIB edits require an atomic embedded MTEXT patch."));
+            }
+            attribute.value = value.to_string();
+            Ok(())
+        })
+    })
+}
+
+/// Change an ATTDEF default value without replacing its handle or definition
+/// identity. Existing INSERT attribute instances are intentionally unchanged.
+#[wasm_bindgen]
+pub fn dwg_update_attdef_default_value(
+    handle: u32,
+    attdef_handle_hex: &str,
+    value: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let attdef_handle = parse_handle_hex(attdef_handle_hex)?;
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(attdef_handle)
+                .ok_or_else(|| JsValue::from_str("ATTDEF handle was not found."))?;
+            match entity {
+                acadrust::EntityType::AttributeDefinition(attdef) => {
+                    attdef.default_value = value.to_string();
+                    Ok(())
+                }
+                _ => Err(JsValue::from_str("Entity is not an ATTDEF.")),
+            }
+        })
+    })
+}
+
 // Update only reference-safe common properties. Geometry and handle-bearing
 /// fields are deliberately excluded from this patch protocol so JS number
 /// precision cannot corrupt embedded u64 references.
