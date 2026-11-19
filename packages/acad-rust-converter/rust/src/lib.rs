@@ -721,8 +721,16 @@ struct Point2Patch { x: f64, y: f64 }
 #[derive(serde::Deserialize)]
 struct LwPolylineVertexPatch { location: Point2Patch, bulge: f64, start_width: f64, end_width: f64, vertex_id: i32 }
 #[derive(serde::Deserialize)]
+enum LwPolylineVertexOperation {
+    Insert { index: usize, vertex: LwPolylineVertexPatch },
+    Update { index: usize, vertex: LwPolylineVertexPatch },
+    Remove { index: usize },
+}
+#[derive(serde::Deserialize)]
 struct LwPolylineGeometryPatch {
-    vertices: Option<Vec<LwPolylineVertexPatch>>, is_closed: Option<bool>, plinegen: Option<bool>,
+    vertices: Option<Vec<LwPolylineVertexPatch>>,
+    vertex_operations: Option<Vec<LwPolylineVertexOperation>>,
+    is_closed: Option<bool>, plinegen: Option<bool>,
     constant_width: Option<f64>, elevation: Option<f64>, thickness: Option<f64>, normal: Option<Point3Patch>,
 }
 
@@ -733,12 +741,24 @@ pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str,
         let entity_handle = parse_handle_hex(entity_handle_hex)?;
         let patch: LwPolylineGeometryPatch = serde_json::from_str(geometry_json)
             .map_err(to_js("LWPOLYLINE geometry patch JSON parse failed"))?;
+        let validate_vertex = |v: &LwPolylineVertexPatch| -> Result<(), JsValue> {
+            if ![v.location.x, v.location.y, v.bulge, v.start_width, v.end_width].iter().all(|x| x.is_finite()) {
+                return Err(JsValue::from_str("LWPOLYLINE vertex values must be finite."));
+            }
+            if v.start_width < 0.0 || v.end_width < 0.0 { return Err(JsValue::from_str("LWPOLYLINE vertex widths cannot be negative.")); }
+            Ok(())
+        };
         if let Some(vertices) = patch.vertices.as_ref() {
             for v in vertices {
-                if ![v.location.x, v.location.y, v.bulge, v.start_width, v.end_width].iter().all(|x| x.is_finite()) {
-                    return Err(JsValue::from_str("LWPOLYLINE vertex values must be finite."));
+                validate_vertex(v)?;
+            }
+        }
+        if let Some(operations) = patch.vertex_operations.as_ref() {
+            for operation in operations {
+                match operation {
+                    LwPolylineVertexOperation::Insert { vertex, .. } | LwPolylineVertexOperation::Update { vertex, .. } => validate_vertex(vertex)?,
+                    LwPolylineVertexOperation::Remove { .. } => {}
                 }
-                if v.start_width < 0.0 || v.end_width < 0.0 { return Err(JsValue::from_str("LWPOLYLINE vertex widths cannot be negative.")); }
             }
         }
         for value in [patch.constant_width, patch.elevation, patch.thickness].into_iter().flatten() {
@@ -753,6 +773,25 @@ pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str,
                         location: acadrust::types::Vector2::new(v.location.x, v.location.y), bulge: v.bulge,
                         start_width: v.start_width, end_width: v.end_width, vertex_id: v.vertex_id,
                     }).collect(); }
+                    if let Some(operations) = patch.vertex_operations {
+                        for operation in operations {
+                            match operation {
+                                LwPolylineVertexOperation::Insert { index, vertex } => {
+                                    if index > polyline.vertices.len() { return Err(JsValue::from_str("LWPOLYLINE insert index is out of range.")); }
+                                    polyline.vertices.insert(index, acadrust::entities::LwVertex { location: acadrust::types::Vector2::new(vertex.location.x, vertex.location.y), bulge: vertex.bulge, start_width: vertex.start_width, end_width: vertex.end_width, vertex_id: vertex.vertex_id });
+                                }
+                                LwPolylineVertexOperation::Update { index, vertex } => {
+                                    let target = polyline.vertices.get_mut(index).ok_or_else(|| JsValue::from_str("LWPOLYLINE update index is out of range."))?;
+                                    target.location = acadrust::types::Vector2::new(vertex.location.x, vertex.location.y);
+                                    target.bulge = vertex.bulge; target.start_width = vertex.start_width; target.end_width = vertex.end_width; target.vertex_id = vertex.vertex_id;
+                                }
+                                LwPolylineVertexOperation::Remove { index } => {
+                                    if index >= polyline.vertices.len() { return Err(JsValue::from_str("LWPOLYLINE remove index is out of range.")); }
+                                    polyline.vertices.remove(index);
+                                }
+                            }
+                        }
+                    }
                     if let Some(v) = patch.is_closed { polyline.is_closed = v; }
                     if let Some(v) = patch.plinegen { polyline.plinegen = v; }
                     if let Some(v) = patch.constant_width { polyline.constant_width = v; }
