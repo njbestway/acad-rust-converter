@@ -39,6 +39,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       addBlockRecord: jest.fn().mockResolvedValue({ name: 'NEW_BLOCK', handle: '40', blockEntityHandle: '41', blockEndHandle: '42' }),
       addEntityToBlock: jest.fn().mockResolvedValue('43'),
       removeEmptyBlockRecord: jest.fn().mockResolvedValue(true),
+      moveEntityToBlock: jest.fn().mockResolvedValue(undefined),
       objectXdata: jest.fn().mockResolvedValue(null),
       setObjectXdataRecord: jest.fn().mockResolvedValue(undefined),
       removeObjectXdataRecord: jest.fn().mockResolvedValue(true),
@@ -206,6 +207,13 @@ describe('AcDbDatabase compatibility proxies', () => {
     const entries = [{ code: 1, value: { String: 'value' } }]
     await entity.setXrecordEntries('CUSTOM', entries)
     expect(client.setXrecordEntries).toHaveBeenCalledWith(7, '2A', 'CUSTOM', entries)
+  })
+
+  it('moves an entity between blocks through the owner-safe resident operation', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    await db.getEntity('2A').moveToBlock('MECHANICAL')
+    expect(client.moveEntityToBlock).toHaveBeenCalledWith(7, '2A', 'MECHANICAL')
   })
 
   it('creates blocks, appends members and delegates safe empty-block removal', async () => {
