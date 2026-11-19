@@ -27,7 +27,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       sectionHandleIndex: jest.fn().mockResolvedValue([]),
       dynamicBlockIndex: jest.fn().mockResolvedValue({ dynamicObjects: [], visibilityParameters: [], representations: [] }),
       insertSequence: jest.fn().mockResolvedValue({ insertHandle: '2A', blockName: 'B', attributes: [], seqendHandle: null, seqendResolved: false, valid: true }),
-      roundtripAudit: jest.fn().mockResolvedValue({ ok: true, dwgByteLength: 100, entityCount: 1, blockRecordCount: 1, objectCount: 0, opaqueObjectCount: 0, entitiesEqual: true, blockRecordsEqual: true, objectsEqual: true, opaqueObjectsEqual: true, objectXdataEqual: true, dynamicVisibilityEqual: true, blockRepresentationsEqual: true, beforeFingerprint: 'AA', afterFingerprint: 'AA' }),
+      roundtripAudit: jest.fn().mockResolvedValue({ ok: true, dwgByteLength: 100, entityCount: 1, blockRecordCount: 1, objectCount: 0, opaqueObjectCount: 0, entitiesEqual: true, blockRecordsEqual: true, objectsEqual: true, opaqueObjectsEqual: true, objectXdataEqual: true, dynamicVisibilityEqual: true, blockRepresentationsEqual: true, tablesEqual: true, extensionDictionaryLinksEqual: true, reactorLinksEqual: true, contextScalesEqual: true, fieldDefinitionsEqual: true, dgnLineStyleDefinitionsEqual: true, dgnLineStyleComponentsEqual: true, vxControlEntriesEqual: true, beforeFingerprint: 'AA', afterFingerprint: 'AA' }),
       entityPage: jest.fn(),
       blockEntityPage: jest.fn(),
       blockEntityHandles: jest.fn().mockResolvedValue(['2A', '2B']),
@@ -70,6 +70,17 @@ describe('AcDbDatabase compatibility proxies', () => {
     const audit = await db.auditRoundtrip()
     expect(audit.ok).toBe(true)
     expect(client.roundtripAudit).toHaveBeenCalledWith(7)
+  })
+
+  it('reports table and relationship parity dimensions from the native roundtrip audit', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const audit = await db.auditRoundtrip()
+    expect(audit.tablesEqual).toBe(true)
+    expect(audit.extensionDictionaryLinksEqual).toBe(true)
+    expect(audit.reactorLinksEqual).toBe(true)
+    expect(audit.contextScalesEqual).toBe(true)
+    expect(audit.vxControlEntriesEqual).toBe(true)
   })
 
   it('exposes dynamic-block visibility and representation metadata', async () => {
