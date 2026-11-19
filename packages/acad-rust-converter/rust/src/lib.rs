@@ -1475,6 +1475,135 @@ pub fn dwg_remove_entity(handle: u32, entity_handle_hex: &str) -> Result<bool, J
     })
 }
 
+/// Lossless, handle-string view of dynamic-block evaluation metadata.
+#[wasm_bindgen]
+pub fn dwg_dynamic_block_index_json(handle: u32) -> Result<String, JsValue> {
+    guard(|| with_document(handle, |doc| {
+        let mut dynamic_objects = Vec::new();
+        for (object_handle, object) in &doc.objects {
+            if let acadrust::objects::ObjectType::DynamicBlock(dynamic) = object {
+                dynamic_objects.push(serde_json::json!({
+                    "handle": format!("{:X}", object_handle.value()),
+                    "owner": format!("{:X}", dynamic.owner.value()),
+                    "dxfName": dynamic.dxf_name,
+                    "cppClassName": dynamic.cpp_class_name,
+                    "data": dynamic.data
+                }));
+            }
+        }
+        dynamic_objects.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+        let mut visibility_parameters = Vec::new();
+        for (parameter_handle, parameter) in &doc.block_visibility_params {
+            let states: Vec<_> = parameter.states.iter().map(|state| {
+                serde_json::json!({
+                    "name": state.name,
+                    "visibleBlocks": state.visible_blocks.iter()
+                        .map(|h| format!("{:X}", h.value())).collect::<Vec<_>>(),
+                    "visibleParams": state.visible_params.iter()
+                        .map(|h| format!("{:X}", h.value())).collect::<Vec<_>>()
+                })
+            }).collect();
+            visibility_parameters.push(serde_json::json!({
+                "handle": format!("{:X}", parameter_handle.value()),
+                "owner": format!("{:X}", parameter.owner.value()),
+                "name": parameter.name,
+                "description": parameter.description,
+                "allBlocks": parameter.all_blocks.iter()
+                    .map(|h| format!("{:X}", h.value())).collect::<Vec<_>>(),
+                "states": states
+            }));
+        }
+        visibility_parameters.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+        let mut representations = Vec::new();
+        for (representation, definition) in &doc.block_representations {
+            representations.push(serde_json::json!({
+                "representationHandle": format!("{:X}", representation.value()),
+                "dynamicBlockHandle": format!("{:X}", definition.value())
+            }));
+        }
+        representations.sort_by(|a, b| {
+            a["representationHandle"].as_str().cmp(&b["representationHandle"].as_str())
+        });
+        let result = serde_json::json!({
+            "dynamicObjects": dynamic_objects,
+            "visibilityParameters": visibility_parameters,
+            "representations": representations
+        });
+        to_json("dynamic block index serialize failed", &result)
+    }))
+}
+
+/// Read an INSERT's ATTRIB/SEQEND chain using exact hexadecimal handles.
+/// Broken links are reported; source data is never silently repaired.
+#[wasm_bindgen]
+pub fn dwg_insert_sequence_json(
+    handle: u32,
+    insert_handle_hex: &str,
+) -> Result<String, JsValue> {
+    guard(|| {
+        let insert_handle = parse_handle_hex(insert_handle_hex)?;
+        with_document(handle, |doc| {
+            let insert = match doc.get_entity(insert_handle) {
+                Some(acadrust::EntityType::Insert(insert)) => insert,
+                Some(_) => return Err(JsValue::from_str("Target entity is not an INSERT.")),
+                None => return Err(JsValue::from_str("INSERT handle was not found.")),
+            };
+            let mut attributes = Vec::with_capacity(insert.attributes.len());
+            let mut seen = std::collections::HashSet::new();
+            let mut valid = true;
+            for attribute in &insert.attributes {
+                let attribute_handle = attribute.common.handle;
+                let attdef = !attribute.attdef_handle.is_null()
+                    && matches!(
+                        doc.get_entity(attribute.attdef_handle),
+                        Some(acadrust::EntityType::AttributeDefinition(_))
+                    );
+                let owner_matches = attribute.common.owner_handle == insert_handle;
+                let unique = seen.insert(attribute_handle.value());
+                valid &= !attribute_handle.is_null() && attdef && owner_matches && unique;
+                attributes.push(serde_json::json!({
+                    "handle": format!("{:X}", attribute_handle.value()),
+                    "tag": attribute.tag,
+                    "value": attribute.value,
+                    "attdefHandle": if attribute.attdef_handle.is_null() {
+                        String::new()
+                    } else {
+                        format!("{:X}", attribute.attdef_handle.value())
+                    },
+                    "ownerHandle": if attribute.common.owner_handle.is_null() {
+                        String::new()
+                    } else {
+                        format!("{:X}", attribute.common.owner_handle.value())
+                    },
+                    "attdefResolved": attdef,
+                    "ownerMatchesInsert": owner_matches,
+                    "uniqueHandle": unique
+                }));
+            }
+            let seqend_handle = insert.seqend_handle;
+            let seqend_resolved = seqend_handle.is_some_and(|seqend| {
+                matches!(doc.get_entity(seqend), Some(acadrust::EntityType::Seqend(_)))
+            });
+            if !insert.attributes.is_empty() {
+                valid &= seqend_resolved;
+            }
+            let result = serde_json::json!({
+                "insertHandle": format!("{:X}", insert_handle.value()),
+                "blockName": insert.block_name,
+                "attributes": attributes,
+                "seqendHandle": seqend_handle
+                    .filter(|h| !h.is_null())
+                    .map(|h| format!("{:X}", h.value())),
+                "seqendResolved": seqend_resolved,
+                "valid": valid
+            });
+            to_json("INSERT attribute sequence serialize failed", &result)
+        })
+    })
+}
+
 #[wasm_bindgen]
 pub fn dwg_save(handle: u32) -> Result<Vec<u8>, JsValue> {
     guard(|| with_document(handle, |doc| {
