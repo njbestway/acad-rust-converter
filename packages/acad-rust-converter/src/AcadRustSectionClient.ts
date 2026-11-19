@@ -74,6 +74,8 @@ export interface AcadRustDocumentClient {
   updateCircleArcGeometry(handle: number, entityHandle: string, geometry: AcadRustCircleArcGeometryPatch): Promise<void>
   /** Typed INSERT placement update; leaves block and ATTRIB references untouched. */
   updateInsertPlacement(handle: number, entityHandle: string, patch: AcadRustInsertPlacementPatch): Promise<void>
+  updateInsertAttributeValue(handle: number, insertHandle: string, tag: string, value: string): Promise<void>
+  updateAttdefDefaultValue(handle: number, attdefHandle: string, value: string): Promise<void>
   /** Patch reference-safe common properties without round-tripping embedded handles. */
   updateEntityCommon(handle: number, entityHandle: string, patch: AcadRustEntityCommonPatch): Promise<void>
   /** Remove an entity by its lossless hexadecimal DWG handle. */
@@ -488,6 +490,36 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
         start_angle: geometry.startAngle,
         end_angle: geometry.endAngle
       })
+    })
+  }
+
+  async updateInsertAttributeValue(
+    handle: number,
+    insertHandle: string,
+    tag: string,
+    value: string
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-insert-attribute',
+      handle,
+      entityHandle: insertHandle,
+      tag,
+      value
+    })
+  }
+
+  async updateAttdefDefaultValue(
+    handle: number,
+    attdefHandle: string,
+    value: string
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-attdef-default',
+      handle,
+      entityHandle: attdefHandle,
+      value
     })
   }
 
