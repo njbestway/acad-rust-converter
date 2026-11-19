@@ -139,8 +139,28 @@ class FixtureClient implements AcadRustDocumentClient {
     return loadJson(`${kind}.json`) as T
   }
 
-   async sectionHandleIndex(_handle: number, _kind: AcadRustSectionKind): Promise<any[]> {
-    return []
+   async sectionHandleIndex(_handle: number, kind: AcadRustSectionKind): Promise<any[]> {
+    const section = await this.section<any>(_handle, kind)
+    const result: Array<{ path: string[]; handle: string }> = []
+    const visit = (value: any, path: string[]): void => {
+      if (Array.isArray(value)) {
+        value.forEach((child, index) => visit(child, [...path, String(index)]))
+        return
+      }
+      if (value == null || typeof value !== 'object') return
+      for (const [key, child] of Object.entries(value)) {
+        const next = [...path, key]
+        const isHandle = key === 'handle' || key.endsWith('_handle') ||
+          key === 'owner' || key === 'block_record' ||
+          key === 'block_entity' || key === 'block_end'
+        if (isHandle && typeof child === 'number' && Number.isSafeInteger(child) && child > 0) {
+          result.push({ path: next, handle: child.toString(16).toUpperCase() })
+        }
+        visit(child, next)
+      }
+    }
+    visit(section, [])
+    return result
   }
 
   async addBlockRecord(): Promise<any> {
