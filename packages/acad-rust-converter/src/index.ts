@@ -15,3 +15,10 @@ export {
   registerAcadRustConverter,
   type AcadRustConverter
 } from './registerAcadRustConverter'
+
+export {
+  ObjectIdentityMap,
+  normalizeDwgHandle,
+  type DwgHandleLike,
+  type ObjectIdentityEntry
+} from './compatibility/ObjectIdentityMap'
