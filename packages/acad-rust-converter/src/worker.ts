@@ -51,6 +51,9 @@ import {
   dwg_block_entity_page,
   dwg_block_entity_handles_json,
   dwg_add_entity_json,
+  dwg_add_block_record_json,
+  dwg_add_entity_to_block_json,
+  dwg_remove_empty_block_record,
   dwg_abort_transaction,
   dwg_begin_transaction,
   dwg_commit_transaction,
@@ -94,6 +97,9 @@ type WorkerRequest =
   | { id: number; kind: 'section-handle-index'; handle: number; section: string }
   | { id: number; kind: 'page'; handle: number; offset: number; limit: number }
   | { id: number; kind: 'entity-handles-page'; handle: number; offset: number; limit: number }
+  | { id: number; kind: 'add-block-record'; handle: number; name: string; basePoint: string; description: string }
+  | { id: number; kind: 'add-block-entity'; handle: number; block: string; entity: string }
+  | { id: number; kind: 'remove-empty-block'; handle: number; block: string }
   | {
       id: number
       kind: 'block-page'
@@ -297,6 +303,27 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             type: 'result',
             id,
             json: dwg_entity_page(handle, request.offset, request.limit)
+          })
+          break
+        case 'add-block-record':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_add_block_record_json(handle, request.name, request.basePoint, request.description)
+          })
+          break
+        case 'add-block-entity':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            entityHandle: dwg_add_entity_to_block_json(handle, request.block, request.entity)
+          })
+          break
+        case 'remove-empty-block':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            removed: dwg_remove_empty_block_record(handle, request.block)
           })
           break
         case 'entity-handles-page':
