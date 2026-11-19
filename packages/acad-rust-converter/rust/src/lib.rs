@@ -770,6 +770,7 @@ pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str,
             let entity = doc.get_entity_mut(entity_handle).ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
             match entity {
                 acadrust::EntityType::LwPolyline(polyline) => {
+                    let has_vertex_patch = patch.vertices.is_some() || patch.vertex_operations.is_some();
                     let mut vertices = patch.vertices.map(|values| values.into_iter().map(|v| acadrust::entities::LwVertex {
                         location: acadrust::types::Vector2::new(v.location.x, v.location.y), bulge: v.bulge,
                         start_width: v.start_width, end_width: v.end_width, vertex_id: v.vertex_id,
@@ -793,7 +794,7 @@ pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str,
                             }
                         }
                     }
-                    if patch.vertices.is_some() || patch.vertex_operations.is_some() { polyline.vertices = vertices; }
+                    if has_vertex_patch { polyline.vertices = vertices; }
                     if let Some(v) = patch.is_closed { polyline.is_closed = v; }
                     if let Some(v) = patch.plinegen { polyline.plinegen = v; }
                     if let Some(v) = patch.constant_width { polyline.constant_width = v; }
