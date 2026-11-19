@@ -203,6 +203,32 @@ fn parse_handle_hex(value: &str) -> Result<acadrust::types::Handle, JsValue> {
     Ok(acadrust::types::Handle::new(raw))
 }
 
+/// Convert external Handle enum payloads from exact hex strings to the
+/// u64 representation expected by acadrust serde. Numeric JS-originated
+/// handles are rejected because they may already have lost precision.
+fn normalize_exact_handle_values(value: &mut serde_json::Value) -> Result<(), JsValue> {
+    match value {
+        serde_json::Value::Object(fields) => {
+            if let Some(handle_value) = fields.get_mut("Handle") {
+                let hex = handle_value.as_str()
+                    .ok_or_else(|| JsValue::from_str("Handle values must be supplied as hexadecimal strings."))?;
+                let handle = parse_handle_hex(hex)?;
+                *handle_value = serde_json::Value::Number(serde_json::Number::from(handle.value()));
+            }
+            for child in fields.values_mut() {
+                normalize_exact_handle_values(child)?;
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for child in items {
+                normalize_exact_handle_values(child)?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 fn register_document(doc: CadDocument) -> u32 {
     OPEN_DOCUMENTS.with(|slot| {
         let mut docs = slot.borrow_mut();
@@ -878,7 +904,10 @@ pub fn dwg_set_object_xdata_record_json(
 ) -> Result<(), JsValue> {
     guard(|| {
         let object_handle = parse_handle_hex(object_handle_hex)?;
-        let record: acadrust::xdata::ExtendedDataRecord = serde_json::from_str(record_json)
+        let mut record_value: serde_json::Value = serde_json::from_str(record_json)
+            .map_err(to_js("XDATA record JSON parse failed"))?;
+        normalize_exact_handle_values(&mut record_value)?;
+        let record: acadrust::xdata::ExtendedDataRecord = serde_json::from_value(record_value)
             .map_err(to_js("XDATA record parse failed"))?;
         if record.application_name.trim().is_empty() {
             return Err(JsValue::from_str("XDATA application name cannot be empty."));
@@ -981,9 +1010,19 @@ pub fn dwg_set_xrecord_entries_json(
 ) -> Result<(), JsValue> {
     guard(|| {
         let owner = parse_handle_hex(owner_handle_hex)?;
-        let entries: Vec<acadrust::objects::XRecordEntry> = serde_json::from_str(entries_json)
+        let mut entries_value: serde_json::Value = serde_json::from_str(entries_json)
+            .map_err(to_js("XRecord entries JSON parse failed"))?;
+        normalize_exact_handle_values(&mut entries_value)?;
+        let entries: Vec<acadrust::objects::XRecordEntry> = serde_json::from_value(entries_value)
             .map_err(to_js("XRecord entries parse failed"))?;
         with_document_mut(handle, |doc| {
+            for entry in &entries {
+                if let Some(reference) = entry.value.as_handle() {
+                    if !document_has_handle(doc, reference) {
+                        return Err(JsValue::from_str("XRecord contains a handle reference that does not resolve."));
+                    }
+                }
+            }
             let record = doc.xrecord_mut(owner, key)
                 .ok_or_else(|| JsValue::from_str("Named XRecord does not exist."))?;
             record.entries = entries;
