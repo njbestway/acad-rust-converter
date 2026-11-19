@@ -282,7 +282,8 @@ function tableNames(
 /** Read a fixture-driven native database. */
 async function readNative(
   arg?: any[] | FixtureOptions,
-  onObjectIdentity?: (objectId: string, dwgHandle: string) => void
+  onObjectIdentity?: (objectId: string, dwgHandle: string) => void,
+  onSectionHandleIndex?: (kind: AcadRustSectionKind, entries: any[]) => void
 ): Promise<{
   db: AcDbDatabase
   client: FixtureClient
@@ -295,7 +296,7 @@ async function readNative(
   // through their attribute constructors, but keep the working database bound so
   // any event side-effects resolve against it (matches how a host drives read()).
   acdbAssignWorkingDatabase(db)
-  const converter = new AcDbAcadRustNativeConverter({ client, onObjectIdentity })
+  const converter = new AcDbAcadRustNativeConverter({ client, onObjectIdentity, onSectionHandleIndex })
   // Capture the ENTITY-END stats (unknown count) via the progress callback.
   let unknownEntityCount = -1
   // Slice 0 never touches the bytes (the client replays fixtures), so an empty
@@ -1301,6 +1302,15 @@ describe('AcDbAcadRustNativeConverter block reference mapping (M4.2)', () => {
       .sort()
     // Native block definitions match the fixture set exactly (spaces excluded).
     expect(blockNames(db)).toEqual(expected)
+  })
+
+  it('exposes lossless handle paths for every mapped document section when requested', async () => {
+    const indexed: string[] = []
+    await readNative(undefined, undefined, kind => indexed.push(kind))
+    expect(indexed).toContain('header')
+    expect(indexed).toContain('tables-blockrecord')
+    expect(indexed).toContain('objects')
+    expect(new Set(indexed).size).toBe(indexed.length)
   })
 
   it('captures native ObjectId to exact DWG handle identities for mapped model-space entities', async () => {
