@@ -37,6 +37,8 @@ describe('AcDbDatabase compatibility proxies', () => {
       updateLineGeometry: jest.fn().mockResolvedValue(undefined),
       updateLwPolylineGeometry: jest.fn().mockResolvedValue(undefined),
       updateCircleArcGeometry: jest.fn().mockResolvedValue(undefined),
+      updateEllipseGeometry: jest.fn().mockResolvedValue(undefined),
+      updateSplineGeometry: jest.fn().mockResolvedValue(undefined),
       updateInsertPlacement: jest.fn().mockResolvedValue(undefined),
       updateInsertAttributeValue: jest.fn().mockResolvedValue(undefined),
       updateAttdefDefaultValue: jest.fn().mockResolvedValue(undefined),
@@ -159,6 +161,48 @@ describe('AcDbDatabase compatibility proxies', () => {
 
     await entity.setEllipseGeometry(patch)
     expect(client.updateEllipseGeometry).toHaveBeenCalledWith(7, '2A', patch)
+  })
+
+  it('updates SPLINE NURBS data through a typed reference-safe patch', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    client.getEntity.mockResolvedValueOnce({
+      Spline: {
+        common: { handle: 42, layer: '0', linetype: 'ByLayer', linetype_scale: 1, invisible: false },
+        degree: 2,
+        flags: { closed: false, periodic: false, rational: false, planar: true, linear: false },
+        knots: [0, 0, 0, 1, 1, 1],
+        control_points: [{ x: 0, y: 0, z: 0 }, { x: 5, y: 10, z: 0 }, { x: 10, y: 0, z: 0 }],
+        weights: [],
+        fit_points: [],
+        normal: { x: 0, y: 0, z: 1 },
+        knot_tolerance: 0,
+        control_tolerance: 0,
+        fit_tolerance: 0,
+        begin_tangent: { x: 0, y: 0, z: 0 },
+        end_tangent: { x: 0, y: 0, z: 0 },
+        knot_parameterization: 0,
+        cv_frame_visible: false,
+        dwg_flags1: 0
+      }
+    } as unknown as AcadRustEntity)
+    const patch = {
+      degree: 2,
+      flags: { rational: true },
+      knots: [0, 0, 0, 1, 1, 1],
+      controlPoints: [
+        { x: 0, y: 0, z: 0 },
+        { x: 5, y: 10, z: 0 },
+        { x: 10, y: 0, z: 0 }
+      ],
+      weights: [1, 0.8, 1],
+      knotTolerance: 1e-7,
+      beginTangent: { x: 1, y: 0, z: 0 }
+    }
+
+    await entity.setSplineGeometry(patch)
+    expect(client.updateSplineGeometry).toHaveBeenCalledWith(7, '2A', patch)
   })
 
   it('updates single-line ATTRIB values and ATTDEF defaults through typed APIs', async () => {
