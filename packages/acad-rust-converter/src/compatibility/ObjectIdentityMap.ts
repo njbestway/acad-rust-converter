@@ -106,6 +106,22 @@ export class ObjectIdentityMap {
     }))
   }
 
+  /** Bind a batch atomically. If any pair conflicts, this map is unchanged. */
+  bindMany(entries: readonly ObjectIdentityEntry[]): void {
+    const candidate = this.clone()
+    for (const entry of entries) candidate.bind(entry.objectId, entry.handle)
+    this.restore(candidate)
+  }
+
+  /** Replace this map with a detached copy of another identity snapshot. */
+  restore(snapshot: ObjectIdentityMap): void {
+    this.clear()
+    for (const [objectId, handle] of snapshot.handleByObjectId) {
+      this.handleByObjectId.set(objectId, handle)
+      this.objectIdByHandle.set(handle, objectId)
+    }
+  }
+
   /**
    * Return a detached copy for transaction snapshots. The maps are copied;
    * subsequent bind/unbind operations do not affect the snapshot.
