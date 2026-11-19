@@ -46,6 +46,9 @@ describe('AcDbDatabase compatibility proxies', () => {
       ensureXrecord: jest.fn().mockResolvedValue('45'),
       xrecord: jest.fn().mockResolvedValue({ entries: [] }),
       setXrecordEntries: jest.fn().mockResolvedValue(undefined),
+      setEntityReactors: jest.fn().mockResolvedValue(undefined),
+      setExtensionDictionaryEntry: jest.fn().mockResolvedValue('44'),
+      removeExtensionDictionaryEntry: jest.fn().mockResolvedValue(true),
       removeEntity: jest.fn().mockResolvedValue(true),
       save: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
       beginTransaction: jest.fn().mockResolvedValue(undefined),
@@ -166,6 +169,21 @@ describe('AcDbDatabase compatibility proxies', () => {
       'transactionCommitted',
       'databaseSaved'
     ])
+  })
+
+  it('updates reactor links and extension dictionary entries by exact handles', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+
+    await entity.setReactors(['2B', 'FFFFFFFFFFFFFFFF'])
+    expect(client.setEntityReactors).toHaveBeenCalledWith(7, '2A', ['2B', 'FFFFFFFFFFFFFFFF'])
+
+    expect(await entity.setExtensionDictionaryEntry('APP_DATA', '2B', true)).toBe('44')
+    expect(client.setExtensionDictionaryEntry).toHaveBeenCalledWith(
+      7, '2A', 'APP_DATA', '2B', true
+    )
+    expect(await entity.removeExtensionDictionaryEntry('APP_DATA')).toBe(true)
   })
 
   it('routes XData and Extension Dictionary operations through Rust handles', async () => {
