@@ -61,6 +61,9 @@ import {
   dwg_ensure_xrecord,
   dwg_xrecord_json,
   dwg_set_xrecord_entries_json,
+  dwg_set_entity_reactors_json,
+  dwg_set_extension_dictionary_entry,
+  dwg_remove_extension_dictionary_entry,
   dwg_abort_transaction,
   dwg_begin_transaction,
   dwg_commit_transaction,
@@ -118,6 +121,9 @@ type WorkerRequest =
   | { id: number; kind: 'ensure-xrecord'; handle: number; ownerHandle: string; key: string }
   | { id: number; kind: 'read-xrecord'; handle: number; ownerHandle: string; key: string }
   | { id: number; kind: 'set-xrecord-entries'; handle: number; ownerHandle: string; key: string; entries: string }
+  | { id: number; kind: 'set-entity-reactors'; handle: number; entityHandle: string; reactors: string }
+  | { id: number; kind: 'set-dictionary-entry'; handle: number; ownerHandle: string; key: string; targetHandle: string; hardOwner: boolean }
+  | { id: number; kind: 'remove-dictionary-entry'; handle: number; ownerHandle: string; key: string }
   | {
       id: number
       kind: 'block-page'
@@ -325,6 +331,26 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             type: 'result',
             id,
             json: dwg_entity_page(handle, request.offset, request.limit)
+          })
+          break
+        case 'set-entity-reactors':
+          dwg_set_entity_reactors_json(handle, request.entityHandle, request.reactors)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'set-dictionary-entry':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            entityHandle: dwg_set_extension_dictionary_entry(
+              handle, request.ownerHandle, request.key, request.targetHandle, request.hardOwner
+            )
+          })
+          break
+        case 'remove-dictionary-entry':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            removed: dwg_remove_extension_dictionary_entry(handle, request.ownerHandle, request.key)
           })
           break
         case 'object-xdata':
