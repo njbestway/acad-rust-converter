@@ -992,6 +992,84 @@ pub fn dwg_update_ellipse_geometry_json(
 }
 
 #[derive(serde::Deserialize, Default)]
+struct TextGeometryPatch {
+    value: Option<String>, insertion_point: Option<Point3Patch>,
+    alignment_point: Option<Option<Point3Patch>>, height: Option<f64>,
+    rotation: Option<f64>, width_factor: Option<f64>, oblique_angle: Option<f64>,
+    style: Option<String>, normal: Option<Point3Patch>, thickness: Option<f64>,
+    generation_flags: Option<i16>,
+}
+#[derive(serde::Deserialize, Default)]
+struct MTextGeometryPatch {
+    value: Option<String>, insertion_point: Option<Point3Patch>, height: Option<f64>,
+    rectangle_width: Option<f64>, rectangle_height: Option<Option<f64>>,
+    rotation: Option<f64>, style: Option<String>, normal: Option<Point3Patch>,
+    line_spacing_factor: Option<f64>, background_fill_flags: Option<i32>,
+    background_scale: Option<f64>, background_transparency: Option<i32>,
+}
+fn validate_text_numbers(values: &[Option<f64>], label: &str) -> Result<(), JsValue> {
+    if values.iter().flatten().any(|value| !value.is_finite()) {
+        return Err(JsValue::from_str(label));
+    }
+    Ok(())
+}
+#[wasm_bindgen]
+pub fn dwg_update_text_geometry_json(handle: u32, entity_handle_hex: &str, geometry_json: &str) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: TextGeometryPatch = serde_json::from_str(geometry_json).map_err(to_js("TEXT geometry patch JSON parse failed"))?;
+        validate_text_numbers(&[patch.height, patch.rotation, patch.width_factor, patch.oblique_angle, patch.thickness], "TEXT numeric values must be finite.")?;
+        if patch.height.is_some_and(|v| v <= 0.0) || patch.width_factor.is_some_and(|v| v <= 0.0) || patch.thickness.is_some_and(|v| v < 0.0) {
+            return Err(JsValue::from_str("TEXT height and width factor must be positive; thickness must be non-negative."));
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle).ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            let text = match entity { acadrust::EntityType::Text(text) => text, _ => return Err(JsValue::from_str("The target entity is not TEXT.")) };
+            if let Some(v) = patch.value { text.value = v; }
+            if let Some(p) = patch.insertion_point { text.insertion_point = acadrust::types::Vector3::new(p.x,p.y,p.z); }
+            if let Some(p) = patch.alignment_point { text.alignment_point = p.map(|v| acadrust::types::Vector3::new(v.x,v.y,v.z)); }
+            if let Some(v) = patch.height { text.height = v; }
+            if let Some(v) = patch.rotation { text.rotation = v; }
+            if let Some(v) = patch.width_factor { text.width_factor = v; }
+            if let Some(v) = patch.oblique_angle { text.oblique_angle = v; }
+            if let Some(v) = patch.style { text.style = v; }
+            if let Some(p) = patch.normal { text.normal = acadrust::types::Vector3::new(p.x,p.y,p.z); }
+            if let Some(v) = patch.thickness { text.thickness = v; }
+            if let Some(v) = patch.generation_flags { text.generation_flags = v; }
+            Ok(())
+        })
+    })
+}
+#[wasm_bindgen]
+pub fn dwg_update_mtext_geometry_json(handle: u32, entity_handle_hex: &str, geometry_json: &str) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: MTextGeometryPatch = serde_json::from_str(geometry_json).map_err(to_js("MTEXT geometry patch JSON parse failed"))?;
+        validate_text_numbers(&[patch.height, patch.rectangle_width, patch.rectangle_height.flatten(), patch.rotation, patch.line_spacing_factor, patch.background_scale], "MTEXT numeric values must be finite.")?;
+        if patch.height.is_some_and(|v| v <= 0.0) || patch.rectangle_width.is_some_and(|v| v < 0.0) || patch.rectangle_height.flatten().is_some_and(|v| v < 0.0) || patch.line_spacing_factor.is_some_and(|v| v <= 0.0) || patch.background_scale.is_some_and(|v| v <= 0.0) {
+            return Err(JsValue::from_str("MTEXT dimensions and scale factors are outside their valid range."));
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle).ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            let mtext = match entity { acadrust::EntityType::MText(mtext) => mtext, _ => return Err(JsValue::from_str("The target entity is not MTEXT.")) };
+            if let Some(v) = patch.value { mtext.value = v; }
+            if let Some(p) = patch.insertion_point { mtext.insertion_point = acadrust::types::Vector3::new(p.x,p.y,p.z); }
+            if let Some(v) = patch.height { mtext.height = v; }
+            if let Some(v) = patch.rectangle_width { mtext.rectangle_width = v; }
+            if let Some(v) = patch.rectangle_height { mtext.rectangle_height = v; }
+            if let Some(v) = patch.rotation { mtext.rotation = v; mtext.dwg_x_direction = None; }
+            if let Some(v) = patch.style { mtext.style = v; }
+            if let Some(p) = patch.normal { mtext.normal = acadrust::types::Vector3::new(p.x,p.y,p.z); }
+            if let Some(v) = patch.line_spacing_factor { mtext.line_spacing_factor = v; }
+            if let Some(v) = patch.background_fill_flags { mtext.background_fill_flags = v; }
+            if let Some(v) = patch.background_scale { mtext.background_scale = v; }
+            if let Some(v) = patch.background_transparency { mtext.background_transparency = v; }
+            Ok(())
+        })
+    })
+}
+
+#[derive(serde::Deserialize, Default)]
 struct SplineFlagsPatch {
     closed: Option<bool>,
     periodic: Option<bool>,
