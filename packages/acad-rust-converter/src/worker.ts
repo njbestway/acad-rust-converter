@@ -56,7 +56,7 @@ import {
   dwg_close,
   dwg_entity_page,
   dwg_entity_json,
-  dwg_update_entity_json,
+  dwg_update_entity_common_json,
   dwg_meta,
   dwg_open,
   dwg_section_json,
@@ -102,7 +102,7 @@ type WorkerRequest =
   | { id: number; kind: 'add-entity'; handle: number; entityJson: string }
   | { id: number; kind: 'remove-entity'; handle: number; entityHandle: string }
   | { id: number; kind: 'get-entity'; handle: number; entityHandle: string }
-  | { id: number; kind: 'update-entity'; handle: number; entityHandle: string; entityJson: string }
+  | { id: number; kind: 'update-entity-common'; handle: number; entityHandle: string; patchJson: string }
   | { id: number; kind: 'save'; handle: number }
 
 interface WorkerResult {
@@ -332,8 +332,8 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             json: dwg_entity_json(handle, request.entityHandle)
           })
           break
-        case 'update-entity':
-          dwg_update_entity_json(handle, request.entityHandle, request.entityJson)
+        case 'update-entity-common':
+          dwg_update_entity_common_json(handle, request.entityHandle, request.patchJson)
           ctx.postMessage({ type: 'result', id })
           break
         case 'save': {
