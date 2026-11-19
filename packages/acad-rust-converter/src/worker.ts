@@ -160,6 +160,7 @@ type WorkerRequest =
   | { id: number; kind: 'update-circle-arc'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-ellipse'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-spline'; handle: number; entityHandle: string; geometryJson: string }
+  | { id: number; kind: 'update-text' | 'update-mtext'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-insert-placement'; handle: number; entityHandle: string; patchJson: string }
   | { id: number; kind: 'update-insert-attribute'; handle: number; entityHandle: string; tag: string; value: string }
   | { id: number; kind: 'update-attdef-default'; handle: number; entityHandle: string; value: string }
