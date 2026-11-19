@@ -62,3 +62,10 @@ The typed geometry mutation set now includes LINE endpoints and CIRCLE/ARC cente
 The TypeScript façade now checks its transaction depth before issuing Rust commit/abort requests. This prevents a façade/Rust stack mismatch from committing or rolling back the resident document before discovering that no corresponding identity snapshot exists. Identity snapshots are retained until Rust confirms abort; if the worker rejects the rollback request, the caller can retry. The transaction() helper preserves the original action/commit error if rollback also fails, attaching the secondary failure as rollbackError. A read-only transactionDepth reports the façade's current nested depth.
 
 Jest cases cover empty-stack commit/abort rejection and retry after a failed worker rollback. These tests have been added but are not executed in this environment.
+
+
+## Lossless model-space entity-handle sidecar
+
+The Rust/WASM API now exposes `dwg_entity_handle_page_json(handle, offset, limit)`, which returns a page-aligned array of uppercase hexadecimal entity handles directly from `CadDocument`. The worker and TypeScript client expose this as `entityHandlePage`. The native converter fetches this sidecar beside each model-space entity page, verifies equal lengths and valid hexadecimal values, and cross-checks the legacy numeric `common.handle` only when that number is a safe integer. Unsafe JS numbers are never converted back into claimed-exact handles.
+
+This is an additive bridge: existing entity JSON remains backward compatible for the rendering mapper, while a lossless identity channel is now available for future ObjectId binding. It does not yet replace every numeric handle in section JSON or automatically bind every newly created MLightCAD ObjectId. Rust/WASM regeneration and build/runtime verification are still required.
