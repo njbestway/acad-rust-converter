@@ -365,17 +365,11 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       // by handle, and the renderer resolves that reference by style *name* (the
       // converter re-derives object handles, so the DWG hex is not a valid native
       // object id). The handle -> name map must therefore exist before LTYPE maps.
-      const textStyles = await client.section<AcadRustTextStyleTable>(
-        handle,
-        'tables-style'
-      )
+      const textStyles = await readSection<AcadRustTextStyleTable>('tables-style')
       const styleNameByHandle = buildStyleNameByHandle(textStyles)
 
       // LTYPE (layers reference linetype names, so land the table first).
-      const lineTypes = await client.section<AcadRustLineTypeTable>(
-        handle,
-        'tables-ltype'
-      )
+      const lineTypes = await readSection<AcadRustLineTypeTable>('tables-ltype')
       await emit(11, 'LTYPE', 'START')
       mapLineTypes(db, lineTypes, styleNameByHandle)
       await emit(12, 'LTYPE', 'END')
@@ -383,10 +377,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       // DIMSTYLE (M4.6): dimension styles; DIMENSION entities only resolve
       // their look (text size / arrows / gaps / colors) through this table at
       // draw time, so the records must exist before the entity stage lands.
-      const dimStyles = await client.section<AcadRustDimStyleTable>(
-        handle,
-        'tables-dimstyle'
-      )
+      const dimStyles = await readSection<AcadRustDimStyleTable>('tables-dimstyle')
       await emit(13, 'DIMSTYLE', 'START')
       mapDimStyles(db, dimStyles)
       await emit(13, 'DIMSTYLE', 'END')
@@ -395,10 +386,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       // camera + snap/grid/ucs geometry drive the initial view framing; the DXF
       // baseline carries the same values. Flag/enum/handle fields are left at
       // defaults to match the baseline (see `viewportToRecord`).
-      const vports = await client.section<AcadRustVportTable>(
-        handle,
-        'tables-vport'
-      )
+      const vports = await readSection<AcadRustVportTable>('tables-vport')
       await emit(13, 'VPORT', 'START')
       mapVports(db, vports)
       await emit(13, 'VPORT', 'END')
@@ -416,10 +404,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       await emit(15, 'STYLE', 'END')
 
       // LAYER ($CLAYER + the layer table entities hang off).
-      const layers = await client.section<AcadRustLayerTable>(
-        handle,
-        'tables-layer'
-      )
+      const layers = await readSection<AcadRustLayerTable>('tables-layer')
       await emit(16, 'LAYER', 'START')
       mapLayers(db, layers)
       await emit(17, 'LAYER', 'END')
@@ -427,10 +412,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       // BLOCK-RECORD table (block *definitions*). Landed before entities so the
       // `tables-blockrecord` set is in place when INSERTs resolve by name; their
       // inner entities are paged in the ENTITY stage below.
-      const blockRecords = await client.section<AcadRustBlockRecordTable>(
-        handle,
-        'tables-blockrecord'
-      )
+      const blockRecords = await readSection<AcadRustBlockRecordTable>('tables-blockrecord')
       await emit(18, 'BLOCK_RECORD', 'START')
       const mappedBlocks = mapBlockRecords(db, blockRecords)
       await emit(18, 'BLOCK_RECORD', 'END')
