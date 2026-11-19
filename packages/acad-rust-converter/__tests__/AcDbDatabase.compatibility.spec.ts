@@ -42,6 +42,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       updateTextGeometry: jest.fn().mockResolvedValue(undefined),
       updateMTextGeometry: jest.fn().mockResolvedValue(undefined),
       updateDimensionBase: jest.fn().mockResolvedValue(undefined),
+      getDimensionMeasurement: jest.fn().mockResolvedValue({ subtype: 'DIMENSION_LINEAR', measurement: 25, cachedMeasurement: 24, blockName: '*D12' }),
       updateInsertPlacement: jest.fn().mockResolvedValue(undefined),
       updateInsertAttributeValue: jest.fn().mockResolvedValue(undefined),
       updateAttdefDefaultValue: jest.fn().mockResolvedValue(undefined),
@@ -206,6 +207,21 @@ describe('AcDbDatabase compatibility proxies', () => {
 
     await entity.setSplineGeometry(patch)
     expect(client.updateSplineGeometry).toHaveBeenCalledWith(7, '2A', patch)
+  })
+
+  it('reads DIMENSION measurement computed from native subtype geometry', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    jest.spyOn(entity, 'getClassName').mockResolvedValue('Dimension')
+
+    await expect(entity.getDimensionMeasurement()).resolves.toEqual({
+      subtype: 'DIMENSION_LINEAR',
+      measurement: 25,
+      cachedMeasurement: 24,
+      blockName: '*D12'
+    })
+    expect(client.getDimensionMeasurement).toHaveBeenCalledWith(7, '2A')
   })
 
   it('updates DIMENSION display properties through the native typed proxy', async () => {
