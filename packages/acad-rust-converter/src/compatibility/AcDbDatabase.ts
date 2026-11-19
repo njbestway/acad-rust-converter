@@ -1,6 +1,8 @@
 import {
   acadRustEntityKind,
-  type AcadRustEntity
+  type AcadRustEntity,
+  type AcadRustBlockRecord,
+  type AcadRustBlockRecordTable
 } from '../model/acadrust-model'
 import {
   type AcadRustDocumentClient,
@@ -55,6 +57,11 @@ export class AcDbDatabase {
 
   off(listener: AcDbDatabaseListener): void {
     this.listeners.delete(listener)
+  }
+
+  get blockTable(): AcDbBlockTable {
+    this.assertOpen()
+    return new AcDbBlockTable(this)
   }
 
   getEntity(handle: DwgHandleLike): AcDbEntity {
@@ -123,6 +130,21 @@ export class AcDbDatabase {
     await this.client.close(this.documentHandle)
     this.closed = true
     this.listeners.clear()
+  }
+
+  /** @internal Block-table proxy bridge. */
+  async readBlockRecords(): Promise<AcadRustBlockRecordTable> {
+    this.assertOpen()
+    return this.client.section<AcadRustBlockRecordTable>(
+      this.documentHandle,
+      'tables-blockrecord'
+    )
+  }
+
+  /** @internal Block-record proxy bridge. */
+  async readBlockEntityHandles(name: string): Promise<string[]> {
+    this.assertOpen()
+    return this.client.blockEntityHandles(this.documentHandle, name)
   }
 
   /** @internal Entity proxy bridge. */
@@ -219,5 +241,66 @@ export class AcDbEntity {
       throw new Error(`Entity ${kind} has no common property block.`)
     }
     return (common as Record<string, unknown>)[property] as T
+  }
+}
+
+
+/** Read-only AcDbBlockTable view over acadrust's BLOCK-RECORD table. */
+export class AcDbBlockTable {
+  constructor(private readonly database: AcDbDatabase) {}
+
+  async getAt(name: string): Promise<AcDbBlockTableRecord | undefined> {
+    const table = await this.database.readBlockRecords()
+    const actualName = Object.keys(table.entries).find(
+      key => key.toUpperCase() === name.toUpperCase()
+    )
+    if (actualName == null) return undefined
+    return new AcDbBlockTableRecord(this.database, table.entries[actualName])
+  }
+
+  async has(name: string): Promise<boolean> {
+    return (await this.getAt(name)) != null
+  }
+
+  async getAll(): Promise<AcDbBlockTableRecord[]> {
+    const table = await this.database.readBlockRecords()
+    return Object.values(table.entries).map(
+      record => new AcDbBlockTableRecord(this.database, record)
+    )
+  }
+
+  async getNames(): Promise<string[]> {
+    const table = await this.database.readBlockRecords()
+    return Object.keys(table.entries)
+  }
+}
+
+/** Handle-safe proxy for one BLOCK-RECORD; entity handles are fetched as hex. */
+export class AcDbBlockTableRecord {
+  constructor(
+    private readonly database: AcDbDatabase,
+    private readonly record: AcadRustBlockRecord
+  ) {}
+
+  get name(): string { return this.record.name }
+  get description(): string { return this.record.description }
+  get xrefPath(): string { return this.record.xref_path }
+  get explodable(): boolean { return this.record.explodable }
+  get scaleUniformly(): boolean { return this.record.scale_uniformly }
+  get units(): number { return this.record.units }
+  get basePoint(): readonly number[] { return this.record.base_point }
+  get flags(): AcadRustBlockRecord['flags'] { return this.record.flags }
+
+  async getEntityHandles(): Promise<string[]> {
+    return this.database.readBlockEntityHandles(this.record.name)
+  }
+
+  async getEntities(): Promise<AcDbEntity[]> {
+    const handles = await this.getEntityHandles()
+    return handles.map(handle => this.database.getEntity(handle))
+  }
+
+  async getEntityCount(): Promise<number> {
+    return (await this.getEntityHandles()).length
   }
 }
