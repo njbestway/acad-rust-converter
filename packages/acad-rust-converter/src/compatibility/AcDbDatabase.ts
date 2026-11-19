@@ -10,6 +10,7 @@ import {
   type AcadRustEntityCommonPatch,
   type AcadRustLwPolylineGeometryPatch,
   type AcadRustCircleArcGeometryPatch,
+  type AcadRustLwPolylineVertex,
   type AcadRustInsertPlacementPatch,
   type AcadRustDynamicBlockIndex,
   type AcadRustInsertSequence,
@@ -628,7 +629,7 @@ export class AcDbEntity {
     await this.database.patchLwPolylineGeometry(this.handle, geometry)
   }
 
-  async insertPolylineVertex(index: number, vertex: import('../AcadRustSectionClient').AcadRustLwPolylineVertex): Promise<void> {
+  async insertPolylineVertex(index: number, vertex: AcadRustLwPolylineVertex): Promise<void> {
     await this.setPolylineGeometry({ vertexOperations: [{ op: 'insert', index, vertex }] })
   }
 
