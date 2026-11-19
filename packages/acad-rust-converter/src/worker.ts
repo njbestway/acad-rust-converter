@@ -58,6 +58,7 @@ import {
   dwg_entity_page,
   dwg_entity_json,
   dwg_update_entity_common_json,
+  dwg_update_line_geometry_json,
   dwg_meta,
   dwg_open,
   dwg_section_json,
@@ -105,6 +106,7 @@ type WorkerRequest =
   | { id: number; kind: 'remove-entity'; handle: number; entityHandle: string }
   | { id: number; kind: 'get-entity'; handle: number; entityHandle: string }
   | { id: number; kind: 'update-entity-common'; handle: number; entityHandle: string; patchJson: string }
+  | { id: number; kind: 'update-line'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'save'; handle: number }
 
 interface WorkerResult {
@@ -343,6 +345,10 @@ ctx.addEventListener('message', (event: MessageEvent) => {
           break
         case 'update-entity-common':
           dwg_update_entity_common_json(handle, request.entityHandle, request.patchJson)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'update-line':
+          dwg_update_line_geometry_json(handle, request.entityHandle, request.geometryJson)
           ctx.postMessage({ type: 'result', id })
           break
         case 'save': {
