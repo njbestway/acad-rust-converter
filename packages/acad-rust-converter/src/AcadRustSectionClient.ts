@@ -90,6 +90,7 @@ export interface AcadRustDocumentClient {
   /** Typed ELLIPSE geometry update; preserves common/reference fields. */
   updateEllipseGeometry(handle: number, entityHandle: string, geometry: AcadRustEllipseGeometryPatch): Promise<void>
   updateDimensionBase(handle: number, entityHandle: string, patch: AcadRustDimensionBasePatch): Promise<void>
+  getDimensionMeasurement(handle: number, entityHandle: string): Promise<{ subtype: string; measurement: number; cachedMeasurement: number; blockName: string }>
   updateTextGeometry(handle: number, entityHandle: string, geometry: AcadRustTextGeometryPatch): Promise<void>
   updateMTextGeometry(handle: number, entityHandle: string, geometry: AcadRustMTextGeometryPatch): Promise<void>
   /** Typed NURBS SPLINE update; preserves common/reference fields and DWG-only state. */
@@ -826,6 +827,14 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       line_spacing_style: patch.lineSpacingStyle, text_user_positioned: patch.textUserPositioned,
       flip_arrow1: patch.flipArrow1, flip_arrow2: patch.flipArrow2
     }) })
+  }
+
+  async getDimensionMeasurement(
+    handle: number,
+    entityHandle: string
+  ): Promise<{ subtype: string; measurement: number; cachedMeasurement: number; blockName: string }> {
+    const result = await this.request({ id: 0, kind: 'dimension-measurement', handle, entityHandle })
+    return this.parseJson(result, 'dimension measurement')
   }
 
   async updateTextGeometry(handle: number, entityHandle: string, geometry: AcadRustTextGeometryPatch): Promise<void> {
