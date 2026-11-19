@@ -39,7 +39,7 @@
 //     name string (e.g. "AC1032"); `EntityType` is an externally-tagged serde
 //     enum, i.e. one JSON object whose single key is the variant name
 //     (e.g. `{"Line": {...}}`) - the TypeScript model mirrors exactly that.
-use acadrust::{CadDocument, DwgReader, DxfReader, DxfWriter};
+use acadrust::{CadDocument, DwgReader, DxfReader, DwgWriter, DxfWriter};
 use std::any::Any;
 use std::cell::RefCell;
 use std::io::Cursor;
@@ -153,6 +153,8 @@ thread_local! {
     /// `dwg_close`; `dwg_open` reuses a free slot before growing the vec, so a
     /// long-lived page (opening and closing many drawings) doesn't leak slots.
     static OPEN_DOCUMENTS: RefCell<Vec<Option<CadDocument>>> = const { RefCell::new(Vec::new()) };
+    static OPEN_TRANSACTIONS: RefCell<std::collections::HashMap<u32, Vec<CadDocument>>> =
+        RefCell::new(std::collections::HashMap::new());
 }
 
 /// Run `f` against the document behind `handle`, or a `JsValue` error if the
@@ -179,6 +181,28 @@ fn with_document<T>(
 /// when possible) and return its handle. Shared by [`dwg_open`] and
 /// [`dxf_open`] so the sectioned read path is entirely format-agnostic once the
 /// `CadDocument` is resident.
+fn with_document_mut<T>(
+    handle: u32,
+    f: impl FnOnce(&mut CadDocument) -> Result<T, JsValue>,
+) -> Result<T, JsValue> {
+    OPEN_DOCUMENTS.with(|slot| {
+        let mut docs = slot.borrow_mut();
+        match docs.get_mut(handle as usize) {
+            Some(Some(doc)) => f(doc),
+            Some(None) => Err(JsValue::from_str("acad-rust document is closed.")),
+            None => Err(JsValue::from_str("Unknown acad-rust document handle.")),
+        }
+    })
+}
+
+fn parse_handle_hex(value: &str) -> Result<acadrust::types::Handle, JsValue> {
+    let trimmed = value.trim();
+    let digits = trimmed.strip_prefix("0x").or_else(|| trimmed.strip_prefix("0X")).unwrap_or(trimmed);
+    let raw = u64::from_str_radix(digits, 16).map_err(to_js("invalid hexadecimal DWG handle"))?;
+    if raw == 0 { return Err(JsValue::from_str("DWG handle 0 is reserved.")); }
+    Ok(acadrust::types::Handle::new(raw))
+}
+
 fn register_document(doc: CadDocument) -> u32 {
     OPEN_DOCUMENTS.with(|slot| {
         let mut docs = slot.borrow_mut();
@@ -411,3 +435,84 @@ pub const SECTION_KINDS: &[&str] = &[
     "tables-vx",
     "objects",
 ];
+
+
+// Mutable CadDocument API used by the TypeScript AcDb compatibility layer.
+#[wasm_bindgen]
+pub fn dwg_begin_transaction(handle: u32) -> Result<(), JsValue> {
+    guard(|| {
+        let snapshot = OPEN_DOCUMENTS.with(|slot| {
+            let docs = slot.borrow();
+            match docs.get(handle as usize) {
+                Some(Some(doc)) => Ok(doc.clone()),
+                Some(None) => Err(JsValue::from_str("Cannot transact on a closed document.")),
+                None => Err(JsValue::from_str("Unknown acad-rust document handle.")),
+            }
+        })?;
+        OPEN_TRANSACTIONS.with(|transactions| transactions.borrow_mut().entry(handle).or_default().push(snapshot));
+        Ok(())
+    })
+}
+
+#[wasm_bindgen]
+pub fn dwg_commit_transaction(handle: u32) -> Result<(), JsValue> {
+    guard(|| OPEN_TRANSACTIONS.with(|transactions| {
+        let mut transactions = transactions.borrow_mut();
+        let stack = transactions.get_mut(&handle)
+            .ok_or_else(|| JsValue::from_str("No active transaction for this document."))?;
+        stack.pop().ok_or_else(|| JsValue::from_str("No active transaction for this document."))?;
+        if stack.is_empty() { transactions.remove(&handle); }
+        Ok(())
+    }))
+}
+
+#[wasm_bindgen]
+pub fn dwg_abort_transaction(handle: u32) -> Result<(), JsValue> {
+    guard(|| {
+        let snapshot = OPEN_TRANSACTIONS.with(|transactions| {
+            let mut transactions = transactions.borrow_mut();
+            let stack = transactions.get_mut(&handle)
+                .ok_or_else(|| JsValue::from_str("No active transaction for this document."))?;
+            let snapshot = stack.pop().ok_or_else(|| JsValue::from_str("No active transaction for this document."))?;
+            if stack.is_empty() { transactions.remove(&handle); }
+            Ok(snapshot)
+        })?;
+        OPEN_DOCUMENTS.with(|slot| {
+            let mut docs = slot.borrow_mut();
+            match docs.get_mut(handle as usize) {
+                Some(document @ Some(_)) => { *document = Some(snapshot); Ok(()) }
+                Some(None) => Err(JsValue::from_str("Cannot roll back a closed document.")),
+                None => Err(JsValue::from_str("Unknown acad-rust document handle.")),
+            }
+        })
+    })
+}
+
+/// Add one serde-encoded EntityType to model space; the allocated handle is
+/// returned as uppercase hex so JavaScript never rounds a DWG u64.
+#[wasm_bindgen]
+pub fn dwg_add_entity_json(handle: u32, entity_json: &str) -> Result<String, JsValue> {
+    guard(|| {
+        let entity: acadrust::EntityType = serde_json::from_str(entity_json)
+            .map_err(to_js("acadrust entity JSON parse failed"))?;
+        with_document_mut(handle, |doc| {
+            let entity_handle = doc.add_entity(entity).map_err(to_js("acadrust add_entity failed"))?;
+            Ok(format!("{:X}", entity_handle.value()))
+        })
+    })
+}
+
+#[wasm_bindgen]
+pub fn dwg_remove_entity(handle: u32, entity_handle_hex: &str) -> Result<bool, JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        with_document_mut(handle, |doc| Ok(doc.remove_entity(entity_handle).is_some()))
+    })
+}
+
+#[wasm_bindgen]
+pub fn dwg_save(handle: u32) -> Result<Vec<u8>, JsValue> {
+    guard(|| with_document(handle, |doc| {
+        DwgWriter::write_to_vec(doc).map_err(to_js("acadrust DWG write failed"))
+    }))
+}
