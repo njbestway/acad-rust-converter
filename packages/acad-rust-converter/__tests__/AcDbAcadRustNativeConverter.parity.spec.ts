@@ -155,6 +155,9 @@ class FixtureClient implements AcadRustDocumentClient {
   async ensureXrecord(): Promise<string> { return '15' }
   async xrecord(): Promise<null> { return null }
   async setXrecordEntries(): Promise<void> {}
+  async setEntityReactors(): Promise<void> {}
+  async setExtensionDictionaryEntry(): Promise<string> { return '16' }
+  async removeExtensionDictionaryEntry(): Promise<boolean> { return false }
 
    async entityPage(_handle: number, offset: number): Promise<any[]> {
     // The offline dumper committed only the first model-space page; serving it
