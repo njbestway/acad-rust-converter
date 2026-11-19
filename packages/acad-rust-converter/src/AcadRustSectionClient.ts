@@ -59,6 +59,13 @@ export interface AcadRustDocumentClient {
   addEntityToBlock(handle: number, blockName: string, entityJson: string): Promise<string>
   /** Remove only an empty, unreferenced user block definition. */
   removeEmptyBlockRecord(handle: number, blockName: string): Promise<boolean>
+  objectXdata<T = unknown>(handle: number, objectHandle: string): Promise<T | null>
+  setObjectXdataRecord(handle: number, objectHandle: string, record: unknown): Promise<void>
+  removeObjectXdataRecord(handle: number, objectHandle: string, application: string): Promise<boolean>
+  ensureExtensionDictionary(handle: number, ownerHandle: string): Promise<string>
+  ensureXrecord(handle: number, ownerHandle: string, key: string): Promise<string>
+  xrecord<T = unknown>(handle: number, ownerHandle: string, key: string): Promise<T | null>
+  setXrecordEntries(handle: number, ownerHandle: string, key: string, entries: unknown[]): Promise<void>
   /** Read one entity by its lossless hexadecimal DWG handle. */
   getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
   /** Typed geometry update for LINE endpoints; leaves all reference fields untouched. */
@@ -308,6 +315,84 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       result,
       'block-entities-batch'
     )
+  }
+
+  async objectXdata<T = unknown>(handle: number, objectHandle: string): Promise<T | null> {
+    const result = await this.request({ id: 0, kind: 'object-xdata', handle, objectHandle })
+    return this.parseJson<T | null>(result, 'object-xdata')
+  }
+
+  async setObjectXdataRecord(
+    handle: number,
+    objectHandle: string,
+    record: unknown
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'set-object-xdata',
+      handle,
+      objectHandle,
+      record: JSON.stringify(record)
+    })
+  }
+
+  async removeObjectXdataRecord(
+    handle: number,
+    objectHandle: string,
+    application: string
+  ): Promise<boolean> {
+    const result = await this.request({
+      id: 0,
+      kind: 'remove-object-xdata',
+      handle,
+      objectHandle,
+      application
+    })
+    return result.removed === true
+  }
+
+  async ensureExtensionDictionary(handle: number, ownerHandle: string): Promise<string> {
+    const result = await this.request({
+      id: 0,
+      kind: 'ensure-extension-dictionary',
+      handle,
+      ownerHandle
+    })
+    if (result.entityHandle == null) throw new Error('acad-rust worker returned no extension dictionary handle.')
+    return result.entityHandle
+  }
+
+  async ensureXrecord(handle: number, ownerHandle: string, key: string): Promise<string> {
+    const result = await this.request({
+      id: 0,
+      kind: 'ensure-xrecord',
+      handle,
+      ownerHandle,
+      key
+    })
+    if (result.entityHandle == null) throw new Error('acad-rust worker returned no XRecord handle.')
+    return result.entityHandle
+  }
+
+  async xrecord<T = unknown>(handle: number, ownerHandle: string, key: string): Promise<T | null> {
+    const result = await this.request({ id: 0, kind: 'read-xrecord', handle, ownerHandle, key })
+    return this.parseJson<T | null>(result, 'xrecord')
+  }
+
+  async setXrecordEntries(
+    handle: number,
+    ownerHandle: string,
+    key: string,
+    entries: unknown[]
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'set-xrecord-entries',
+      handle,
+      ownerHandle,
+      key,
+      entries: JSON.stringify(entries)
+    })
   }
 
   async addBlockRecord(
