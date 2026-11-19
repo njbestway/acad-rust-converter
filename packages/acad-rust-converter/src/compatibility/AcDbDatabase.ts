@@ -8,7 +8,8 @@ import {
 import {
   type AcadRustDocumentClient,
   type AcadRustEntityCommonPatch,
-  type AcadRustCircleArcGeometryPatch
+  type AcadRustCircleArcGeometryPatch,
+  type AcadRustInsertPlacementPatch
 } from '../AcadRustSectionClient'
 import {
   normalizeDwgHandle,
@@ -18,7 +19,7 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
-export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch
+export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustInsertPlacementPatch
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
@@ -210,6 +211,16 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
+  async patchInsertPlacement(
+    handle: AcDbHandle,
+    patch: AcadRustInsertPlacementPatch
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.updateInsertPlacement(this.documentHandle, handle, patch)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch })
+  }
+
   /** @internal CIRCLE/ARC geometry proxy bridge. */
   async patchCircleArcGeometry(
     handle: AcDbHandle,
@@ -368,6 +379,10 @@ export class AcDbEntity {
 
   async setCircleGeometry(geometry: { center?: AcadRustPoint3d; radius?: number }): Promise<void> {
     await this.database.patchCircleArcGeometry(this.handle, geometry)
+  }
+
+  async setInsertPlacement(patch: AcadRustInsertPlacementPatch): Promise<void> {
+    await this.database.patchInsertPlacement(this.handle, patch)
   }
 
   async setArcGeometry(geometry: {
