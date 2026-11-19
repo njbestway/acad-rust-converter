@@ -56,6 +56,7 @@ import {
   dwg_commit_transaction,
   dwg_close,
   dwg_entity_page,
+  dwg_entity_handle_page_json,
   dwg_entity_json,
   dwg_update_entity_common_json,
   dwg_update_line_geometry_json,
@@ -90,6 +91,7 @@ type WorkerRequest =
   | { id: number; kind: 'meta'; handle: number }
   | { id: number; kind: 'section'; handle: number; section: string }
   | { id: number; kind: 'page'; handle: number; offset: number; limit: number }
+  | { id: number; kind: 'entity-handles-page'; handle: number; offset: number; limit: number }
   | {
       id: number
       kind: 'block-page'
