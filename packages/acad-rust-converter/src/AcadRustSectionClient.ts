@@ -205,8 +205,14 @@ export interface AcadRustLwPolylineVertex {
   vertexId: number
 }
 
+export type AcadRustLwPolylineVertexOperation =
+  | { op: 'insert'; index: number; vertex: AcadRustLwPolylineVertex }
+  | { op: 'update'; index: number; vertex: AcadRustLwPolylineVertex }
+  | { op: 'remove'; index: number }
+
 export interface AcadRustLwPolylineGeometryPatch {
   vertices?: AcadRustLwPolylineVertex[]
+  vertexOperations?: AcadRustLwPolylineVertexOperation[]
   isClosed?: boolean
   plinegen?: boolean
   constantWidth?: number
@@ -665,6 +671,9 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
   async updateLwPolylineGeometry(handle: number, entityHandle: string, geometry: AcadRustLwPolylineGeometryPatch): Promise<void> {
     await this.request({ id: 0, kind: 'update-lwpolyline', handle, entityHandle, geometryJson: JSON.stringify({
       vertices: geometry.vertices?.map(v => ({ location: v.location, bulge: v.bulge, start_width: v.startWidth, end_width: v.endWidth, vertex_id: v.vertexId })),
+      vertex_operations: geometry.vertexOperations?.map(op => op.op === 'remove'
+        ? { op: op.op, index: op.index }
+        : { op: op.op, index: op.index, vertex: { location: op.vertex.location, bulge: op.vertex.bulge, start_width: op.vertex.startWidth, end_width: op.vertex.endWidth, vertex_id: op.vertex.vertexId } }),
       is_closed: geometry.isClosed, plinegen: geometry.plinegen, constant_width: geometry.constantWidth,
       elevation: geometry.elevation, thickness: geometry.thickness, normal: geometry.normal
     }) })
