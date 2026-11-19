@@ -363,6 +363,14 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
+  /** @internal Read subtype-derived DIMENSION measurement from Rust geometry. */
+  async readDimensionMeasurement(
+    handle: AcDbHandle
+  ): Promise<{ subtype: string; measurement: number; cachedMeasurement: number; blockName: string }> {
+    this.assertOpen()
+    return this.client.getDimensionMeasurement(this.documentHandle, handle)
+  }
+
   /** @internal DIMENSION base-property proxy bridge. */
   async patchDimensionBase(handle: AcDbHandle, patch: AcadRustDimensionBasePatch): Promise<void> {
     this.assertOpen()
@@ -690,6 +698,19 @@ export class AcDbEntity {
 
   async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
     await this.database.patchLineGeometry(this.handle, { start, end })
+  }
+
+  /** Return the current measurement computed from native subtype geometry. */
+  async getDimensionMeasurement(): Promise<{
+    subtype: string
+    measurement: number
+    cachedMeasurement: number
+    blockName: string
+  }> {
+    if (await this.getClassName() !== 'Dimension') {
+      throw new Error(`Entity ${this.handle} is not DIMENSION.`)
+    }
+    return this.database.readDimensionMeasurement(this.handle)
   }
 
   async setDimensionProperties(patch: AcadRustDimensionBasePatch): Promise<void> {
