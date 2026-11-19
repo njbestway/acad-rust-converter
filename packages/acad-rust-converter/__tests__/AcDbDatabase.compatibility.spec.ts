@@ -24,6 +24,9 @@ describe('AcDbDatabase compatibility proxies', () => {
       open: jest.fn().mockResolvedValue(7),
       meta: jest.fn(),
       section: jest.fn(),
+      sectionHandleIndex: jest.fn().mockResolvedValue([]),
+      dynamicBlockIndex: jest.fn().mockResolvedValue({ dynamicObjects: [], visibilityParameters: [], representations: [] }),
+      insertSequence: jest.fn().mockResolvedValue({ insertHandle: '2A', blockName: 'B', attributes: [], seqendHandle: null, seqendResolved: false, valid: true }),
       entityPage: jest.fn(),
       blockEntityPage: jest.fn(),
       blockEntityHandles: jest.fn().mockResolvedValue(['2A', '2B']),
@@ -59,6 +62,22 @@ describe('AcDbDatabase compatibility proxies', () => {
       dispose: jest.fn()
     } as unknown as jest.Mocked<AcadRustDocumentClient>
   }
+
+  it('exposes dynamic-block visibility and representation metadata', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const index = await db.getDynamicBlockIndex()
+    expect(index.visibilityParameters).toEqual([])
+    expect(client.dynamicBlockIndex).toHaveBeenCalledWith(7)
+  })
+
+  it('inspects INSERT ATTRIB/SEQEND associations using exact handles', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const sequence = await db.getInsertSequence('2a')
+    expect(sequence.insertHandle).toBe('2A')
+    expect(client.insertSequence).toHaveBeenCalledWith(7, '2A')
+  })
 
   it('uses a stable hexadecimal handle and reads the resident entity on demand', async () => {
     const client = createClient()
