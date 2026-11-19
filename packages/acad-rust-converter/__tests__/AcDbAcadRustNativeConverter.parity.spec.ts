@@ -168,6 +168,36 @@ class FixtureClient implements AcadRustDocumentClient {
     }))
   }
 
+  async blockEntityHandles(_handle: number, _blockName: string): Promise<string[]> {
+    return []
+  }
+
+  async getEntity(_handle: number, _entityHandle: string): Promise<any> {
+    throw new Error('FixtureClient does not expose resident entity proxies.')
+  }
+
+  async updateEntityCommon(
+    _handle: number,
+    _entityHandle: string,
+    _patch: any
+  ): Promise<void> {}
+
+  async addEntity(_handle: number, _entityJson: string): Promise<string> {
+    return '1'
+  }
+
+  async removeEntity(_handle: number, _entityHandle: string): Promise<boolean> {
+    return false
+  }
+
+  async save(_handle: number): Promise<ArrayBuffer> {
+    return new ArrayBuffer(0)
+  }
+
+  async beginTransaction(_handle: number): Promise<void> {}
+  async commitTransaction(_handle: number): Promise<void> {}
+  async abortTransaction(_handle: number): Promise<void> {}
+
    async close(_handle: number): Promise<void> {
     this.closed++
   }
