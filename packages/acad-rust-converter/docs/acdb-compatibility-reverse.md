@@ -104,3 +104,8 @@ The façade now exposes XDATA read/upsert/remove, Extension Dictionary creation,
 - Block rename, moving entities between blocks, non-empty block deletion, dynamic-block graph editing, and multiline ATTRIB/MTEXT atomic editing remain pending.
 - Section handle indexes do not yet replace the legacy numeric handle fields in the renderer JSON. They provide a separate lossless channel for consumers that need to preserve identities/references.
 - Rust/WASM compilation, TypeScript build, Jest execution, native DWG save/reopen, AutoCAD open and AUDIT remain required. None is claimed as passed in this branch update.
+
+
+The native converter also accepts an optional `identityMap: ObjectIdentityMap` config. When supplied, each successful graphical entity mapping automatically binds the newly assigned MLightCAD ObjectId to the exact DWG handle; `onObjectIdentity` remains available as an observer callback. This is currently graphical entity coverage, not a blanket identity map for symbol-table records and non-graphical OBJECTS items.
+
+XDATA and XRecord `Handle` enum values in mutation payloads must be supplied as hexadecimal strings. Rust converts them to the pinned acadrust u64 Handle representation internally; numeric JS-originated handle payloads are rejected to avoid precision loss. XRecord handle references are validated against the resident document before replacement.
