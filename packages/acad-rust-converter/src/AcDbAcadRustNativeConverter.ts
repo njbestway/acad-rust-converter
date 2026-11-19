@@ -340,6 +340,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
     try {
       handle = await client.open(data)
       const activeDocumentHandle = handle
+      const sectionHandleIndexes = new Map<AcadRustSectionKind, AcadRustExactHandlePath[]>()
       const readSection = async <T>(kind: AcadRustSectionKind): Promise<T> => {
         if (!this.onSectionHandleIndex) {
           return client.section<T>(activeDocumentHandle, kind)
@@ -349,6 +350,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
           client.sectionHandleIndex(activeDocumentHandle, kind)
         ])
         this.onSectionHandleIndex(kind, handleIndex)
+        sectionHandleIndexes.set(kind, handleIndex)
         return section
       }
       await emit(4, 'PARSE', 'IN-PROGRESS')
@@ -382,6 +384,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       const lineTypes = await readSection<AcadRustLineTypeTable>('tables-ltype')
       await emit(11, 'LTYPE', 'START')
       mapLineTypes(db, lineTypes, styleNameByHandle)
+      captureTableIdentities(db.tables.linetypeTable, sectionHandleIndexes.get('tables-ltype'), this.onObjectIdentity)
       await emit(12, 'LTYPE', 'END')
 
       // DIMSTYLE (M4.6): dimension styles; DIMENSION entities only resolve
@@ -390,6 +393,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       const dimStyles = await readSection<AcadRustDimStyleTable>('tables-dimstyle')
       await emit(13, 'DIMSTYLE', 'START')
       mapDimStyles(db, dimStyles)
+      captureTableIdentities(db.tables.dimStyleTable, sectionHandleIndexes.get('tables-dimstyle'), this.onObjectIdentity)
       await emit(13, 'DIMSTYLE', 'END')
 
       // VPORT table (`tables-vport.json`): the active model-space viewport. Its
@@ -399,12 +403,14 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       const vports = await readSection<AcadRustVportTable>('tables-vport')
       await emit(13, 'VPORT', 'START')
       mapVports(db, vports)
+      captureTableIdentities(db.tables.viewportTable, sectionHandleIndexes.get('tables-vport'), this.onObjectIdentity)
       await emit(13, 'VPORT', 'END')
 
       // STYLE (text styles; $TEXTSTYLE resolves against this table). Fetched
       // above (before LTYPE) for complex-linetype style-name resolution.
       await emit(14, 'STYLE', 'START')
       const styleHandleToObjectId = mapTextStyles(db, textStyles)
+      captureTableIdentities(db.tables.textStyleTable, sectionHandleIndexes.get('tables-style'), this.onObjectIdentity)
       // Complex-linetype elements landed earlier still carry the raw DWG style
       // handle as `styleObjectId`; rewrite those to the native ids assigned above
       // so the renderer can resolve the embedded SHAPE/TEXT font. Shape-file
@@ -417,6 +423,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       const layers = await readSection<AcadRustLayerTable>('tables-layer')
       await emit(16, 'LAYER', 'START')
       mapLayers(db, layers)
+      captureTableIdentities(db.tables.layerTable, sectionHandleIndexes.get('tables-layer'), this.onObjectIdentity)
       await emit(17, 'LAYER', 'END')
 
       // BLOCK-RECORD table (block *definitions*). Landed before entities so the
@@ -425,6 +432,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       const blockRecords = await readSection<AcadRustBlockRecordTable>('tables-blockrecord')
       await emit(18, 'BLOCK_RECORD', 'START')
       const mappedBlocks = mapBlockRecords(db, blockRecords)
+      captureTableIdentities(db.tables.blockTable, sectionHandleIndexes.get('tables-blockrecord'), this.onObjectIdentity)
       await emit(18, 'BLOCK_RECORD', 'END')
 
       await emit(PARSE_END_PCT, 'PARSE', 'END', { unknownEntityCount: 0 })
@@ -1905,6 +1913,33 @@ function mapBlockRecords(
 // comparable to the Architecture-A baseline. Unrecognized variants return false
 // and advance `unknownEntityCount`.
 // ---------------------------------------------------------------------------
+
+/**
+ * Bind the ObjectIds assigned to MLightCAD symbol-table records to their
+ * original DWG handles. The Rust section index is keyed by serialized
+ * IndexMap entry path, not by JS numeric handle fields.
+ */
+function captureTableIdentities(
+  table: { newIterator(): Iterable<any> },
+  handleIndex: AcadRustExactHandlePath[] | undefined,
+  onIdentity?: (objectId: string, dwgHandle: string) => void
+): void {
+  if (!handleIndex || !onIdentity) return
+  const handleByName = new Map<string, string>()
+  for (const entry of handleIndex) {
+    if (entry.path.length !== 3 || entry.path[0] !== 'entries' || entry.path[2] !== 'handle') {
+      continue
+    }
+    const name = entry.path[1].split('\\0')[0].toUpperCase()
+    if (/^[0-9A-F]+$/.test(entry.handle)) handleByName.set(name, entry.handle)
+  }
+  for (const record of table.newIterator()) {
+    const objectId = record?.objectId
+    const name = String(record?.name ?? '').toUpperCase()
+    const handle = handleByName.get(name)
+    if (typeof objectId === 'string' && handle) onIdentity(objectId, handle)
+  }
+}
 
 /** Map one externally-tagged entity into `target`; false => unknown. */
 function mapEntity(
