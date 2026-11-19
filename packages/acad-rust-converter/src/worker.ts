@@ -49,6 +49,7 @@
 import {
   dwg_block_entities_batch,
   dwg_block_entity_page,
+  dwg_block_entity_handles_json,
   dwg_add_entity_json,
   dwg_abort_transaction,
   dwg_begin_transaction,
@@ -301,6 +302,13 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             type: 'result',
             id,
             json: dwg_block_entities_batch(handle, request.names)
+          })
+          break
+        case 'block-handles':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_block_entity_handles_json(handle, request.block)
           })
           break
         case 'begin-transaction':
