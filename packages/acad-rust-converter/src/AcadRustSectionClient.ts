@@ -237,7 +237,8 @@ export interface AcadRustCircleArcGeometryPatch {
 
 export interface AcadRustDimensionBasePatch {
   /** null clears the explicit text override and restores measured text. */
-  textOverride?: string | null
+  textOverride?: string
+  clearTextOverride?: boolean
   textMiddlePoint?: AcadRustPoint3d
   textRotation?: number
   horizontalDirection?: number
@@ -819,7 +820,7 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
 
   async updateDimensionBase(handle: number, entityHandle: string, patch: AcadRustDimensionBasePatch): Promise<void> {
     await this.request({ id: 0, kind: 'update-dimension', handle, entityHandle, patchJson: JSON.stringify({
-      text_override: patch.textOverride, text_middle_point: patch.textMiddlePoint,
+      text_override: patch.textOverride, clear_text_override: patch.clearTextOverride, text_middle_point: patch.textMiddlePoint,
       text_rotation: patch.textRotation, horizontal_direction: patch.horizontalDirection,
       style_name: patch.styleName, line_spacing_factor: patch.lineSpacingFactor,
       line_spacing_style: patch.lineSpacingStyle, text_user_positioned: patch.textUserPositioned,
