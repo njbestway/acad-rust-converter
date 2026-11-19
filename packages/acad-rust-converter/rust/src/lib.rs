@@ -1052,6 +1052,30 @@ pub fn dwg_update_dimension_base_json(handle: u32, entity_handle_hex: &str, patc
     })
 }
 
+/// Compute a DIMENSION measurement from subtype geometry rather than the
+/// serialized cache, which may be stale after geometry edits.
+#[wasm_bindgen]
+pub fn dwg_dimension_measurement_json(handle: u32, entity_handle_hex: &str) -> Result<String, JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        with_document(handle, |doc| {
+            let entity = doc.get_entity(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            let dimension = match entity {
+                acadrust::EntityType::Dimension(dimension) => dimension,
+                _ => return Err(JsValue::from_str("The target entity is not DIMENSION.")),
+            };
+            let value = serde_json::json!({
+                "subtype": dimension.entity_type(),
+                "measurement": dimension.measurement(),
+                "cachedMeasurement": dimension.base().actual_measurement,
+                "blockName": dimension.base().block_name,
+            });
+            to_json("DIMENSION measurement serialize failed", &value)
+        })
+    })
+}
+
 #[derive(serde::Deserialize, Default)]
 struct TextGeometryPatch {
     value: Option<String>, insertion_point: Option<Point3Patch>,
