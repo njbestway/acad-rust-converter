@@ -351,6 +351,10 @@ ctx.addEventListener('message', (event: MessageEvent) => {
           dwg_update_line_geometry_json(handle, request.entityHandle, request.geometryJson)
           ctx.postMessage({ type: 'result', id })
           break
+        case 'update-circle-arc':
+          dwg_update_circle_arc_geometry_json(handle, request.entityHandle, request.geometryJson)
+          ctx.postMessage({ type: 'result', id })
+          break
         case 'save': {
           const dwg = toExactBuffer(dwg_save(handle))
           ctx.postMessage({ type: 'result', id, dwg }, [dwg])
