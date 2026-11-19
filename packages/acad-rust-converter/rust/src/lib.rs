@@ -2427,13 +2427,78 @@ pub fn dwg_roundtrip_audit_json(handle: u32) -> Result<String, JsValue> {
 /// Synchronize cached DIMENSION measurements before serialization. The DWG
 /// writer persists DimensionBase.actual_measurement for most subtypes; stale
 /// cache values can otherwise survive even though subtype geometry is authoritative.
+fn dimension_point_is_finite(point: acadrust::types::Vector3) -> bool {
+    point.x.is_finite() && point.y.is_finite() && point.z.is_finite()
+}
+
+/// Validate source geometry before asking acadrust for a measurement. Some
+/// subtype measurement helpers intentionally turn invalid projections into
+/// zero, which is useful for rendering but must not make a corrupt dimension
+/// look safe to persist.
+fn dimension_geometry_is_finite(dimension: &acadrust::entities::dimension::Dimension) -> bool {
+    use acadrust::entities::dimension::Dimension as D;
+    let base = dimension.base();
+    let base_is_finite = [
+        base.definition_point,
+        base.text_middle_point,
+        base.insertion_point,
+        base.normal,
+        base.insertion_scale,
+    ].into_iter().all(dimension_point_is_finite)
+        && base.text_rotation.is_finite()
+        && base.horizontal_direction.is_finite()
+        && base.line_spacing_factor.is_finite()
+        && base.insertion_rotation.is_finite();
+
+    base_is_finite && match dimension {
+        D::Aligned(d) => [
+            d.first_point, d.second_point, d.definition_point,
+        ].into_iter().all(dimension_point_is_finite) && d.ext_line_rotation.is_finite(),
+        D::Linear(d) => [
+            d.first_point, d.second_point, d.definition_point,
+        ].into_iter().all(dimension_point_is_finite)
+            && d.rotation.is_finite() && d.ext_line_rotation.is_finite(),
+        D::Radius(d) => [
+            d.definition_point, d.angle_vertex,
+        ].into_iter().all(dimension_point_is_finite) && d.leader_length.is_finite(),
+        D::Diameter(d) => [
+            d.definition_point, d.angle_vertex,
+        ].into_iter().all(dimension_point_is_finite) && d.leader_length.is_finite(),
+        D::Angular2Ln(d) => [
+            d.dimension_arc, d.first_point, d.second_point, d.angle_vertex, d.definition_point,
+        ].into_iter().all(dimension_point_is_finite),
+        D::Angular3Pt(d) => [
+            d.definition_point, d.first_point, d.second_point, d.angle_vertex,
+        ].into_iter().all(dimension_point_is_finite),
+        D::Ordinate(d) => [
+            d.definition_point, d.feature_location, d.leader_endpoint,
+        ].into_iter().all(dimension_point_is_finite),
+        D::Arc(d) => [
+            d.definition_point, d.first_extension_point, d.second_extension_point,
+            d.center_point, d.first_leader_point, d.second_leader_point,
+        ].into_iter().all(dimension_point_is_finite)
+            && d.arc_start_parameter.is_finite() && d.arc_end_parameter.is_finite(),
+        D::LargeRadial(d) => [
+            d.definition_point, d.chord_point, d.override_center, d.jog_point,
+        ].into_iter().all(dimension_point_is_finite) && d.jog_angle.is_finite(),
+    }
+}
+
+/// Synchronize cached DIMENSION measurements before serialization. DWG stores
+/// angular measurements in radians (not the degree-valued display measurement),
+/// so always use stored_measurement() after validating the original geometry.
 fn refresh_dimension_measurement_cache(doc: &mut CadDocument) -> Result<(), JsValue> {
     let updates: Vec<_> = doc.entities().filter_map(|entity| {
         if let acadrust::EntityType::Dimension(dimension) = entity {
-            let measurement = dimension.measurement();
+            if !dimension_geometry_is_finite(dimension) {
+                return Some(Err(JsValue::from_str(
+                    "Cannot save DIMENSION with non-finite source geometry."
+                )));
+            }
+            let measurement = dimension.stored_measurement();
             if !measurement.is_finite() {
                 return Some(Err(JsValue::from_str(
-                    "Cannot save DIMENSION with a non-finite geometry measurement."
+                    "Cannot save DIMENSION with a non-finite stored measurement."
                 )));
             }
             let cached = dimension.base().actual_measurement;
@@ -2465,7 +2530,7 @@ pub fn dwg_save(handle: u32) -> Result<Vec<u8>, JsValue> {
 #[cfg(test)]
 mod dimension_measurement_cache_tests {
     use super::*;
-    use acadrust::entities::dimension::{Dimension, DimensionLinear};
+    use acadrust::entities::dimension::{Dimension, DimensionAngular3Pt, DimensionLinear};
 
     #[test]
     fn save_preparation_refreshes_stale_dimension_measurement_cache() {
@@ -2491,6 +2556,33 @@ mod dimension_measurement_cache_tests {
             panic!("expected linear dimension");
         };
         assert!((saved.base.actual_measurement - 50.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn save_preparation_stores_angular_measurements_in_radians() {
+        let mut document = CadDocument::new();
+        let mut dimension = DimensionAngular3Pt::new(
+            acadrust::types::Vector3::new(0.0, 0.0, 0.0),
+            acadrust::types::Vector3::new(1.0, 0.0, 0.0),
+            acadrust::types::Vector3::new(0.0, 1.0, 0.0),
+        );
+        dimension.base.actual_measurement = 999.0;
+        document.add_entity(acadrust::EntityType::Dimension(Dimension::Angular3Pt(dimension))).unwrap();
+        let entity_handle = document.entities().find_map(|entity| {
+            if let acadrust::EntityType::Dimension(dimension) = entity {
+                Some(dimension.base().common.handle)
+            } else {
+                None
+            }
+        }).unwrap();
+
+        refresh_dimension_measurement_cache(&mut document).unwrap();
+
+        let saved = document.get_entity(entity_handle).unwrap();
+        let acadrust::EntityType::Dimension(Dimension::Angular3Pt(saved)) = saved else {
+            panic!("expected angular 3-point dimension");
+        };
+        assert!((saved.base.actual_measurement - std::f64::consts::FRAC_PI_2).abs() < 1.0e-9);
     }
 
     #[test]
