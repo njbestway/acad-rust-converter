@@ -993,7 +993,8 @@ pub fn dwg_update_ellipse_geometry_json(
 
 #[derive(serde::Deserialize, Default)]
 struct DimensionBasePatch {
-    text_override: Option<Option<String>>,
+    text_override: Option<String>,
+    clear_text_override: Option<bool>,
     text_middle_point: Option<Point3Patch>,
     text_rotation: Option<f64>,
     horizontal_direction: Option<f64>,
@@ -1030,7 +1031,8 @@ pub fn dwg_update_dimension_base_json(handle: u32, entity_handle_hex: &str, patc
                 _ => return Err(JsValue::from_str("The target entity is not DIMENSION.")),
             };
             let base = dimension.base_mut();
-            if let Some(value) = patch.text_override { base.set_text_override(value); }
+            if patch.clear_text_override == Some(true) { base.set_text_override(None); }
+            else if let Some(value) = patch.text_override { base.set_text_override(Some(value)); }
             if let Some(point) = patch.text_middle_point {
                 base.text_middle_point = acadrust::types::Vector3::new(point.x, point.y, point.z);
             }
