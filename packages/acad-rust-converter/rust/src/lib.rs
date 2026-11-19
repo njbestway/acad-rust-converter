@@ -1797,3 +1797,29 @@ mod exact_handle_index_tests {
         assert!(!indexed.iter().any(|(path, _)| path.starts_with("points/")));
     }
 }
+
+
+#[cfg(test)]
+mod dwg_roundtrip_audit_tests {
+    use super::document_roundtrip_fingerprint;
+    use acadrust::{CadDocument, DwgReader, DwgWriter};
+    use std::io::Cursor;
+
+    #[test]
+    fn simple_entity_survives_native_dwg_write_and_reopen() {
+        let mut document = CadDocument::new();
+        let line = acadrust::entities::Line::from_coords(
+            1.0, 2.0, 0.0,
+            30.0, 40.0, 0.0,
+        );
+        document.add_entity(acadrust::EntityType::Line(line)).unwrap();
+
+        let before = document_roundtrip_fingerprint(&document).unwrap();
+        let bytes = DwgWriter::write_to_vec(&document).unwrap();
+        let mut reader = DwgReader::from_stream(Cursor::new(bytes));
+        let reopened = reader.read().unwrap();
+        let after = document_roundtrip_fingerprint(&reopened).unwrap();
+
+        assert_eq!(before, after);
+    }
+}
