@@ -2,7 +2,8 @@ import {
   acadRustEntityKind,
   type AcadRustEntity,
   type AcadRustBlockRecord,
-  type AcadRustBlockRecordTable
+  type AcadRustBlockRecordTable,
+  type AcadRustPoint3d
 } from '../model/acadrust-model'
 import {
   type AcadRustDocumentClient,
@@ -14,10 +15,11 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
+export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d }
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
-  | { type: 'objectModified'; handle: AcDbHandle; entity: AcDbEntity; patch: AcadRustEntityCommonPatch }
+  | { type: 'objectModified'; handle: AcDbHandle; entity: AcDbEntity; patch: AcDbEntityPatch }
   | { type: 'objectErased'; handle: AcDbHandle }
   | { type: 'transactionStarted' }
   | { type: 'transactionCommitted' }
@@ -132,6 +134,17 @@ export class AcDbDatabase {
     this.listeners.clear()
   }
 
+  /** @internal LINE geometry proxy bridge. */
+  async patchLineGeometry(
+    handle: AcDbHandle,
+    geometry: { start?: AcadRustPoint3d; end?: AcadRustPoint3d }
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.updateLineGeometry(this.documentHandle, handle, geometry)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch: geometry })
+  }
+
   /** @internal Block-table proxy bridge. */
   async readBlockRecords(): Promise<AcadRustBlockRecordTable> {
     this.assertOpen()
@@ -190,6 +203,22 @@ export class AcDbEntity {
   async getClassName(): Promise<string> {
     const data = await this.getData()
     return acadRustEntityKind(data) ?? 'Unknown'
+  }
+
+  async getLineEndpoints(): Promise<{ start: AcadRustPoint3d; end: AcadRustPoint3d }> {
+    const data = await this.getData()
+    if (acadRustEntityKind(data) !== 'Line') {
+      throw new Error(`Entity ${this.handle} is not a LINE.`)
+    }
+    const line = data.Line as Record<string, unknown>
+    return {
+      start: line.start as AcadRustPoint3d,
+      end: line.end as AcadRustPoint3d
+    }
+  }
+
+  async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
+    await this.database.patchLineGeometry(this.handle, { start, end })
   }
 
   async getLayer(): Promise<string> {
@@ -304,3 +333,4 @@ export class AcDbBlockTableRecord {
     return (await this.getEntityHandles()).length
   }
 }
+
