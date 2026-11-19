@@ -834,7 +834,7 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
     entityHandle: string
   ): Promise<{ subtype: string; measurement: number; cachedMeasurement: number; blockName: string }> {
     const result = await this.request({ id: 0, kind: 'dimension-measurement', handle, entityHandle })
-    return this.parseJson(result, 'dimension measurement')
+    return this.parseJson<{ subtype: string; measurement: number; cachedMeasurement: number; blockName: string }>(result, 'dimension measurement')
   }
 
   async updateTextGeometry(handle: number, entityHandle: string, geometry: AcadRustTextGeometryPatch): Promise<void> {
