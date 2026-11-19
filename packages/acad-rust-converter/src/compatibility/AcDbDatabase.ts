@@ -44,6 +44,9 @@ export type AcDbDatabaseListener = (event: AcDbDatabaseEvent) => void
  */
 export class AcDbDatabase {
   private readonly listeners = new Set<AcDbDatabaseListener>()
+  // Observer failures must never make a completed Rust mutation look failed.
+  // Keep a bounded diagnostic queue so callers can inspect callback failures.
+  private readonly listenerErrors: unknown[] = []
   /** Cross-reference only; the resident Rust CadDocument remains authoritative. */
   readonly identities = new ObjectIdentityMap()
   private readonly identitySnapshots: ObjectIdentityMap[] = []
@@ -418,8 +421,24 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch })
   }
 
+  /** Return and clear callback failures captured during event delivery. */
+  takeListenerErrors(): unknown[] {
+    return this.listenerErrors.splice(0)
+  }
+
   private emit(event: AcDbDatabaseEvent): void {
-    for (const listener of this.listeners) listener(event)
+    // Snapshot listeners so subscribe/unsubscribe during delivery affects only
+    // the next event. A callback runs after the resident Rust operation has
+    // already committed; allowing it to throw would falsely reject that
+    // operation and could trigger an unsafe retry by the caller.
+    for (const listener of Array.from(this.listeners)) {
+      try {
+        listener(event)
+      } catch (error) {
+        this.listenerErrors.push(error)
+        if (this.listenerErrors.length > 100) this.listenerErrors.shift()
+      }
+    }
   }
 
   private assertOpen(): void {
