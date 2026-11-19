@@ -1859,6 +1859,14 @@ pub fn dwg_roundtrip_audit_json(handle: u32) -> Result<String, JsValue> {
             "objectXdataEqual": equal("objectXdata"),
             "dynamicVisibilityEqual": equal("dynamicVisibility"),
             "blockRepresentationsEqual": equal("blockRepresentations"),
+            "tablesEqual": equal("tables"),
+            "extensionDictionaryLinksEqual": equal("extensionDictionaryLinks"),
+            "reactorLinksEqual": equal("reactorLinks"),
+            "contextScalesEqual": equal("contextScales"),
+            "fieldDefinitionsEqual": equal("fieldDefinitions"),
+            "dgnLineStyleDefinitionsEqual": equal("dgnLineStyleDefinitions"),
+            "dgnLineStyleComponentsEqual": equal("dgnLineStyleComponents"),
+            "vxControlEntriesEqual": equal("vxControlEntries"),
             "beforeFingerprint": stable_bytes_fingerprint(
                 &serde_json::to_vec(&before).map_err(to_js("before fingerprint serialize failed"))?
             ),
