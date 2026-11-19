@@ -33,6 +33,9 @@ describe('AcDbDatabase compatibility proxies', () => {
       updateLineGeometry: jest.fn().mockResolvedValue(undefined),
       updateCircleArcGeometry: jest.fn().mockResolvedValue(undefined),
       addEntity: jest.fn().mockResolvedValue('2A'),
+      addBlockRecord: jest.fn().mockResolvedValue({ name: 'NEW_BLOCK', handle: '40', blockEntityHandle: '41', blockEndHandle: '42' }),
+      addEntityToBlock: jest.fn().mockResolvedValue('43'),
+      removeEmptyBlockRecord: jest.fn().mockResolvedValue(true),
       removeEntity: jest.fn().mockResolvedValue(true),
       save: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
       beginTransaction: jest.fn().mockResolvedValue(undefined),
@@ -128,6 +131,48 @@ describe('AcDbDatabase compatibility proxies', () => {
       'transactionCommitted',
       'databaseSaved'
     ])
+  })
+
+  it('creates blocks, appends members and delegates safe empty-block removal', async () => {
+    const client = createClient()
+    client.section.mockResolvedValue({
+      handle: 1,
+      entries: {
+        NEW_BLOCK: {
+          handle: 64,
+          block_entity_handle: 65,
+          block_end_handle: 66,
+          name: 'NEW_BLOCK',
+          flags: {
+            anonymous: false,
+            has_attributes: false,
+            is_xref: false,
+            is_xref_overlay: false,
+            is_external: false,
+            is_xref_unloaded: false
+          },
+          layout: 0,
+          units: 0,
+          explodable: true,
+          scale_uniformly: false,
+          entity_handles: [],
+          xref_path: '',
+          description: '',
+          insert_handles: [],
+          base_point: { x: 0, y: 0, z: 0 }
+        }
+      }
+    } as never)
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const block = await db.blockTable.add('NEW_BLOCK', { x: 1, y: 2, z: 3 }, 'test')
+    expect(block.name).toBe('NEW_BLOCK')
+    expect(client.addBlockRecord).toHaveBeenCalledWith(7, 'NEW_BLOCK', { x: 1, y: 2, z: 3 }, 'test')
+
+    const appended = await block.appendEntity(line)
+    expect(appended.handle).toBe('43')
+    expect(client.addEntityToBlock).toHaveBeenCalledWith(7, 'NEW_BLOCK', JSON.stringify(line))
+    expect(await db.blockTable.remove('NEW_BLOCK')).toBe(true)
+    expect(client.removeEmptyBlockRecord).toHaveBeenCalledWith(7, 'NEW_BLOCK')
   })
 
   it('reads block definitions and returns entity proxies with lossless handles', async () => {
