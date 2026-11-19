@@ -512,6 +512,55 @@ pub fn dwg_add_entity_json(handle: u32, entity_json: &str) -> Result<String, JsV
     })
 }
 
+/// Read one entity by its exact hexadecimal DWG handle.
+#[wasm_bindgen]
+pub fn dwg_entity_json(handle: u32, entity_handle_hex: &str) -> Result<String, JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        with_document(handle, |doc| {
+            let entity = doc.get_entity(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            to_json("acadrust entity serialize failed", entity)
+        })
+    })
+}
+
+/// Replace the public serde representation of one existing entity.
+///
+/// The identity and owner are authoritative in the resident document, not in
+/// caller JSON. Variant changes are rejected because they can invalidate
+/// entity-specific references and block membership. Storage-only DWG payload
+/// is copied from the existing entity before replacement.
+#[wasm_bindgen]
+pub fn dwg_update_entity_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    entity_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let mut replacement: acadrust::EntityType = serde_json::from_str(entity_json)
+            .map_err(to_js("acadrust entity JSON parse failed"))?;
+        with_document_mut(handle, |doc| {
+            let source = doc.get_entity(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?
+                .clone();
+            if std::mem::discriminant(&source) != std::mem::discriminant(&replacement) {
+                return Err(JsValue::from_str(
+                    "Entity variant cannot be changed in-place; erase and add a new entity instead.",
+                ));
+            }
+            replacement.common_mut().handle = entity_handle;
+            replacement.common_mut().owner_handle = source.common().owner_handle;
+            replacement.preserve_storage_data_from(&source);
+            let target = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity disappeared during update."))?;
+            *target = replacement;
+            Ok(())
+        })
+    })
+}
+
 #[wasm_bindgen]
 pub fn dwg_remove_entity(handle: u32, entity_handle_hex: &str) -> Result<bool, JsValue> {
     guard(|| {
