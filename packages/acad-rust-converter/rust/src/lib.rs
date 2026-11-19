@@ -717,6 +717,57 @@ struct Point3Patch {
 }
 
 #[derive(serde::Deserialize)]
+struct Point2Patch { x: f64, y: f64 }
+#[derive(serde::Deserialize)]
+struct LwPolylineVertexPatch { location: Point2Patch, bulge: f64, start_width: f64, end_width: f64, vertex_id: i32 }
+#[derive(serde::Deserialize)]
+struct LwPolylineGeometryPatch {
+    vertices: Option<Vec<LwPolylineVertexPatch>>, is_closed: Option<bool>, plinegen: Option<bool>,
+    constant_width: Option<f64>, elevation: Option<f64>, thickness: Option<f64>, normal: Option<Point3Patch>,
+}
+
+/// In-place LWPOLYLINE patch: never replaces common data or handle relationships.
+#[wasm_bindgen]
+pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str, geometry_json: &str) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: LwPolylineGeometryPatch = serde_json::from_str(geometry_json)
+            .map_err(to_js("LWPOLYLINE geometry patch JSON parse failed"))?;
+        if let Some(vertices) = patch.vertices.as_ref() {
+            for v in vertices {
+                if ![v.location.x, v.location.y, v.bulge, v.start_width, v.end_width].iter().all(|x| x.is_finite()) {
+                    return Err(JsValue::from_str("LWPOLYLINE vertex values must be finite."));
+                }
+                if v.start_width < 0.0 || v.end_width < 0.0 { return Err(JsValue::from_str("LWPOLYLINE vertex widths cannot be negative.")); }
+            }
+        }
+        for value in [patch.constant_width, patch.elevation, patch.thickness].into_iter().flatten() {
+            if !value.is_finite() { return Err(JsValue::from_str("LWPOLYLINE scalar geometry values must be finite.")); }
+        }
+        if let Some(n) = patch.normal.as_ref() { if ![n.x,n.y,n.z].iter().all(|x| x.is_finite()) { return Err(JsValue::from_str("LWPOLYLINE normal must be finite.")); } }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle).ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            match entity {
+                acadrust::EntityType::LwPolyline(polyline) => {
+                    if let Some(vertices) = patch.vertices { polyline.vertices = vertices.into_iter().map(|v| acadrust::entities::LwVertex {
+                        location: acadrust::types::Vector2::new(v.location.x, v.location.y), bulge: v.bulge,
+                        start_width: v.start_width, end_width: v.end_width, vertex_id: v.vertex_id,
+                    }).collect(); }
+                    if let Some(v) = patch.is_closed { polyline.is_closed = v; }
+                    if let Some(v) = patch.plinegen { polyline.plinegen = v; }
+                    if let Some(v) = patch.constant_width { polyline.constant_width = v; }
+                    if let Some(v) = patch.elevation { polyline.elevation = v; }
+                    if let Some(v) = patch.thickness { polyline.thickness = v; }
+                    if let Some(v) = patch.normal { polyline.normal = acadrust::types::Vector3::new(v.x, v.y, v.z); }
+                    Ok(())
+                }
+                _ => Err(JsValue::from_str("The target entity is not an LWPOLYLINE.")),
+            }
+        })
+    })
+}
+
+#[derive(serde::Deserialize)]
 struct LineGeometryPatch {
     start: Option<Point3Patch>,
     end: Option<Point3Patch>,
