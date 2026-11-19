@@ -720,6 +720,32 @@ export interface AcadRustMultiLeaderStyle {
 }
 
 /** A single OBJECTS-section entry; modeled variants are optional keys. */
+/** Dynamic-block parameter/action object. Its opaque semantic payload is
+ * retained by the resident Rust CadDocument; handles are indexed separately. */
+export interface AcadRustDynamicBlockObject {
+  handle: number
+  owner: number
+  reactors: number[]
+  xdictionary_handle?: number | null
+  dxf_name: string
+  cpp_class_name: string
+  data: unknown
+}
+
+/** Parsed visibility parameter side view for a dynamic block. */
+export interface AcadRustBlockVisibilityParameter {
+  handle: number
+  owner: number
+  name: string
+  description: string
+  all_blocks: number[]
+  states: Array<{
+    name: string
+    visible_blocks: number[]
+    visible_params: number[]
+  }>
+}
+
 export interface AcadRustObjectEntry {
   XRecord?: AcadRustXRecord
   Dictionary?: AcadRustDictionary
@@ -727,6 +753,8 @@ export interface AcadRustObjectEntry {
   Group?: AcadRustGroup
   MLineStyle?: AcadRustMLineStyle
   MultiLeaderStyle?: AcadRustMultiLeaderStyle
+  DynamicBlock?: AcadRustDynamicBlockObject
+  BlockVisibilityParameter?: AcadRustBlockVisibilityParameter
 }
 
 /** The `objects.json` OBJECTS section: `handle -> object variant`. */
