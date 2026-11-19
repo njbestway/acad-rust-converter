@@ -133,6 +133,34 @@ describe('AcDbDatabase compatibility proxies', () => {
     )
   })
 
+  it('updates ELLIPSE parameters through a typed reference-safe patch', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    client.getEntity.mockResolvedValueOnce({
+      Ellipse: {
+        common: { handle: 42, layer: '0', linetype: 'ByLayer', linetype_scale: 1, invisible: false },
+        center: { x: 0, y: 0, z: 0 },
+        major_axis: { x: 10, y: 0, z: 0 },
+        minor_axis_ratio: 0.5,
+        start_parameter: 0,
+        end_parameter: Math.PI * 2,
+        normal: { x: 0, y: 0, z: 1 }
+      }
+    } as unknown as AcadRustEntity)
+    const patch = {
+      center: { x: 2, y: 3, z: 0 },
+      majorAxis: { x: 12, y: 0, z: 0 },
+      minorAxisRatio: 0.75,
+      startParameter: 0.2,
+      endParameter: 5.8,
+      normal: { x: 0, y: 0, z: 1 }
+    }
+
+    await entity.setEllipseGeometry(patch)
+    expect(client.updateEllipseGeometry).toHaveBeenCalledWith(7, '2A', patch)
+  })
+
   it('updates single-line ATTRIB values and ATTDEF defaults through typed APIs', async () => {
     const client = createClient()
     const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
