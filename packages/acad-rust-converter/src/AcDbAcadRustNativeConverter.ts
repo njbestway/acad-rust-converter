@@ -101,6 +101,8 @@ import {
 
 import {
   type AcadRustDocumentClient,
+  type AcadRustExactHandlePath,
+  type AcadRustSectionKind,
   AcadRustWorkerDocumentClient
 } from './AcadRustSectionClient'
 import type { AcDbAcadRustConverterConfig } from './AcDbAcadRustConverter'
@@ -242,6 +244,8 @@ export interface AcDbAcadRustNativeConverterConfig extends AcDbAcadRustConverter
    * hexadecimal sidecar, never from the lossy JSON number field.
    */
   onObjectIdentity?: (objectId: string, dwgHandle: string) => void
+  /** Optional exact-handle index for every section, preserving u64 references. */
+  onSectionHandleIndex?: (kind: AcadRustSectionKind, entries: AcadRustExactHandlePath[]) => void
 }
 
 /**
@@ -284,12 +288,14 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
    */
   private workerClient?: AcadRustWorkerDocumentClient
   private readonly onObjectIdentity?: (objectId: string, dwgHandle: string) => void
+  private readonly onSectionHandleIndex?: (kind: AcadRustSectionKind, entries: AcadRustExactHandlePath[]) => void
 
   constructor(config?: AcDbAcadRustNativeConverterConfig) {
     super(config)
     this.opts = config ?? {}
     this.injectedClient = config?.client
     this.onObjectIdentity = config?.onObjectIdentity
+    this.onSectionHandleIndex = config?.onSectionHandleIndex
   }
 
   /**
@@ -323,6 +329,18 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
     let handle: number | undefined
     try {
       handle = await client.open(data)
+      const activeDocumentHandle = handle
+      const readSection = async <T>(kind: AcadRustSectionKind): Promise<T> => {
+        if (!this.onSectionHandleIndex) {
+          return client.section<T>(activeDocumentHandle, kind)
+        }
+        const [section, handleIndex] = await Promise.all([
+          client.section<T>(activeDocumentHandle, kind),
+          client.sectionHandleIndex(activeDocumentHandle, kind)
+        ])
+        this.onSectionHandleIndex(kind, handleIndex)
+        return section
+      }
       await emit(4, 'PARSE', 'IN-PROGRESS')
 
       const meta = await client.meta(handle)
@@ -330,7 +348,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       this.applyVersion(db, meta)
 
       // HEADER ($CLAYER, unit tables, extents, current styles...).
-      const header = await client.section<AcadRustHeader>(handle, 'header')
+      const header = await readSection<AcadRustHeader>('header')
       await emit(8, 'HEADER', 'START')
       mapHeader(db, header)
       await emit(9, 'HEADER', 'END')
@@ -339,7 +357,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       // class-id resolution and DXF re-export). AcDbConversionStage has no CLASSES
       // tick, so this maps without a dedicated progress emit (progress stays
       // monotonic 9 -> 11); entries keep DWG order for 0-based proxy class ids.
-      const classes = await client.section<AcadRustClassTable>(handle, 'classes')
+      const classes = await readSection<AcadRustClassTable>('classes')
       mapClasses(db, classes)
 
       // STYLE is fetched before LTYPE (but still mapped at its own stage below):
@@ -647,7 +665,7 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       // out here the same way the DXF reader skips unknown types. Handles are
       // re-derived (not copied), so parity is asserted on the handle-key set +
       // data, never on identity.
-      const objects = await client.section<AcadRustObjects>(handle, 'objects')
+      const objects = await readSection<AcadRustObjects>('objects')
       await emit(ENTITY_END_PCT, 'OBJECT', 'START')
       mapObjects(db, objects, blockRecords)
       await emit(99, 'OBJECT', 'END')
