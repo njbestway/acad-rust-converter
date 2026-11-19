@@ -51,6 +51,7 @@ export class AcDbDatabase {
   readonly identities = new ObjectIdentityMap()
   private readonly identitySnapshots: ObjectIdentityMap[] = []
   private closed = false
+  private transactionControlInFlight = false
 
   private constructor(
     private readonly client: AcadRustDocumentClient,
@@ -131,36 +132,46 @@ export class AcDbDatabase {
 
   async beginTransaction(): Promise<void> {
     this.assertOpen()
-    await this.client.beginTransaction(this.documentHandle)
-    this.identitySnapshots.push(this.identities.clone())
-    this.emit({ type: 'transactionStarted' })
+    this.enterTransactionControl()
+    try {
+      await this.client.beginTransaction(this.documentHandle)
+      this.identitySnapshots.push(this.identities.clone())
+      this.emit({ type: 'transactionStarted' })
+    } finally {
+      this.leaveTransactionControl()
+    }
   }
 
   async commitTransaction(): Promise<void> {
     this.assertOpen()
-    // Validate the façade stack before touching Rust. Otherwise a mismatched
-    // caller could commit the resident document and only then discover that
-    // the identity snapshot stack was empty.
     if (this.identitySnapshots.length === 0) {
       throw new Error('No active transaction for this database.')
     }
-    await this.client.commitTransaction(this.documentHandle)
-    this.identitySnapshots.pop()
-    this.emit({ type: 'transactionCommitted' })
+    this.enterTransactionControl()
+    try {
+      await this.client.commitTransaction(this.documentHandle)
+      this.identitySnapshots.pop()
+      this.emit({ type: 'transactionCommitted' })
+    } finally {
+      this.leaveTransactionControl()
+    }
   }
 
   async abortTransaction(): Promise<void> {
     this.assertOpen()
-    // Keep the identity snapshot until Rust confirms its rollback. If the
-    // worker fails, callers can retry instead of losing the only matching map.
     const snapshot = this.identitySnapshots[this.identitySnapshots.length - 1]
     if (snapshot == null) {
       throw new Error('No active transaction for this database.')
     }
-    await this.client.abortTransaction(this.documentHandle)
-    this.identitySnapshots.pop()
-    this.identities.restore(snapshot)
-    this.emit({ type: 'transactionAborted' })
+    this.enterTransactionControl()
+    try {
+      await this.client.abortTransaction(this.documentHandle)
+      this.identitySnapshots.pop()
+      this.identities.restore(snapshot)
+      this.emit({ type: 'transactionAborted' })
+    } finally {
+      this.leaveTransactionControl()
+    }
   }
 
   async transaction<T>(action: () => Promise<T>): Promise<T> {
@@ -262,6 +273,12 @@ export class AcDbDatabase {
 
   async close(): Promise<void> {
     if (this.closed) return
+    if (this.transactionControlInFlight) {
+      throw new Error('Cannot close AcDbDatabase while a transaction operation is in flight.')
+    }
+    if (this.identitySnapshots.length > 0) {
+      throw new Error('Cannot close AcDbDatabase with active transactions. Commit or abort them first.')
+    }
     await this.client.close(this.documentHandle)
     this.closed = true
     this.identitySnapshots.length = 0
@@ -475,6 +492,17 @@ export class AcDbDatabase {
         if (this.listenerErrors.length > 100) this.listenerErrors.shift()
       }
     }
+  }
+
+  private enterTransactionControl(): void {
+    if (this.transactionControlInFlight) {
+      throw new Error('A transaction operation is already in flight for this database.')
+    }
+    this.transactionControlInFlight = true
+  }
+
+  private leaveTransactionControl(): void {
+    this.transactionControlInFlight = false
   }
 
   private assertOpen(): void {
