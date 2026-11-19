@@ -81,6 +81,7 @@ import {
   dwg_update_text_geometry_json,
   dwg_update_mtext_geometry_json,
   dwg_update_dimension_base_json,
+  dwg_dimension_measurement_json,
   dwg_update_insert_placement_json,
   dwg_update_insert_attribute_value,
   dwg_update_attdef_default_value,
@@ -163,6 +164,7 @@ type WorkerRequest =
   | { id: number; kind: 'update-spline'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-text' | 'update-mtext'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-dimension'; handle: number; entityHandle: string; patchJson: string }
+  | { id: number; kind: 'dimension-measurement'; handle: number; entityHandle: string }
   | { id: number; kind: 'update-insert-placement'; handle: number; entityHandle: string; patchJson: string }
   | { id: number; kind: 'update-insert-attribute'; handle: number; entityHandle: string; tag: string; value: string }
   | { id: number; kind: 'update-attdef-default'; handle: number; entityHandle: string; value: string }
@@ -567,6 +569,13 @@ ctx.addEventListener('message', (event: MessageEvent) => {
         case 'update-spline':
           dwg_update_spline_geometry_json(handle, request.entityHandle, request.geometryJson)
           ctx.postMessage({ type: 'result', id })
+          break
+        case 'dimension-measurement':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_dimension_measurement_json(handle, request.entityHandle)
+          })
           break
         case 'update-dimension':
           dwg_update_dimension_base_json(handle, request.entityHandle, request.patchJson)
