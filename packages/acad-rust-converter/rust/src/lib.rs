@@ -817,7 +817,7 @@ pub fn dwg_add_entity_to_block_json(
         let mut entity: acadrust::EntityType = serde_json::from_str(entity_json)
             .map_err(to_js("block entity JSON parse failed"))?;
         if matches!(
-            entity,
+            &entity,
             acadrust::EntityType::AttributeEntity(_)
                 | acadrust::EntityType::Block(_)
                 | acadrust::EntityType::BlockEnd(_)
