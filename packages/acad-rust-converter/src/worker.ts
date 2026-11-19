@@ -55,6 +55,8 @@ import {
   dwg_commit_transaction,
   dwg_close,
   dwg_entity_page,
+  dwg_entity_json,
+  dwg_update_entity_json,
   dwg_meta,
   dwg_open,
   dwg_section_json,
@@ -99,6 +101,8 @@ type WorkerRequest =
   | { id: number; kind: 'begin-transaction' | 'commit-transaction' | 'abort-transaction'; handle: number }
   | { id: number; kind: 'add-entity'; handle: number; entityJson: string }
   | { id: number; kind: 'remove-entity'; handle: number; entityHandle: string }
+  | { id: number; kind: 'get-entity'; handle: number; entityHandle: string }
+  | { id: number; kind: 'update-entity'; handle: number; entityHandle: string; entityJson: string }
   | { id: number; kind: 'save'; handle: number }
 
 interface WorkerResult {
@@ -321,6 +325,17 @@ ctx.addEventListener('message', (event: MessageEvent) => {
           ctx.postMessage({ type: 'result', id, removed })
           break
         }
+        case 'get-entity':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_entity_json(handle, request.entityHandle)
+          })
+          break
+        case 'update-entity':
+          dwg_update_entity_json(handle, request.entityHandle, request.entityJson)
+          ctx.postMessage({ type: 'result', id })
+          break
         case 'save': {
           const dwg = toExactBuffer(dwg_save(handle))
           ctx.postMessage({ type: 'result', id, dwg }, [dwg])
