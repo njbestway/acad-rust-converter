@@ -54,6 +54,7 @@ import {
   dwg_add_block_record_json,
   dwg_add_entity_to_block_json,
   dwg_remove_empty_block_record,
+  dwg_move_entity_to_block,
   dwg_object_xdata_json,
   dwg_set_object_xdata_record_json,
   dwg_remove_object_xdata_record,
@@ -114,6 +115,7 @@ type WorkerRequest =
   | { id: number; kind: 'add-block-record'; handle: number; name: string; basePoint: string; description: string }
   | { id: number; kind: 'add-block-entity'; handle: number; block: string; entity: string }
   | { id: number; kind: 'remove-empty-block'; handle: number; block: string }
+  | { id: number; kind: 'move-entity-to-block'; handle: number; entityHandle: string; block: string }
   | { id: number; kind: 'object-xdata'; handle: number; objectHandle: string }
   | { id: number; kind: 'set-object-xdata'; handle: number; objectHandle: string; record: string }
   | { id: number; kind: 'remove-object-xdata'; handle: number; objectHandle: string; application: string }
@@ -409,6 +411,10 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             id,
             entityHandle: dwg_add_entity_to_block_json(handle, request.block, request.entity)
           })
+          break
+        case 'move-entity-to-block':
+          dwg_move_entity_to_block(handle, request.entityHandle, request.block)
+          ctx.postMessage({ type: 'result', id })
           break
         case 'remove-empty-block':
           ctx.postMessage({
