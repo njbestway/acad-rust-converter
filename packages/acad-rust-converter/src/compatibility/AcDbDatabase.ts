@@ -11,7 +11,8 @@ import {
   type AcadRustCircleArcGeometryPatch,
   type AcadRustInsertPlacementPatch,
   type AcadRustDynamicBlockIndex,
-  type AcadRustInsertSequence
+  type AcadRustInsertSequence,
+  type AcadRustRoundtripAudit
 } from '../AcadRustSectionClient'
 import {
   normalizeDwgHandle,
@@ -191,6 +192,12 @@ export class AcDbDatabase {
     const bytes = await this.client.save(this.documentHandle)
     this.emit({ type: 'databaseSaved' })
     return bytes
+  }
+
+  /** Save/reopen the resident DWG in Rust and compare key identity/relationship fingerprints. */
+  async auditRoundtrip(): Promise<AcadRustRoundtripAudit> {
+    this.assertOpen()
+    return this.client.roundtripAudit(this.documentHandle)
   }
 
   /** Read dynamic-block parameters, visibility states and anonymous representation links. */
