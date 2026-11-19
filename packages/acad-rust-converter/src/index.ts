@@ -12,7 +12,8 @@ export {
   type AcadRustWorkerClientOptions,
   type AcadRustBlockEntityGroup,
   type AcadRustEntityCommonPatch,
-  type AcadRustCircleArcGeometryPatch
+  type AcadRustCircleArcGeometryPatch,
+  type AcadRustExactHandlePath
 } from './AcadRustSectionClient'
 export * from './model/acadrust-model'
 export {
