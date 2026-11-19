@@ -616,6 +616,51 @@ export class AcDbEntity {
     await this.database.patchCircleArcGeometry(this.handle, geometry)
   }
 
+  /** Read the complete shared AcDbEntity common-property block. */
+  async getCommonData(): Promise<Record<string, unknown>> {
+    const entity = await this.getData()
+    const kind = acadRustEntityKind(entity)
+    if (!kind) throw new Error('Invalid acadrust EntityType payload.')
+    const payload = entity[kind]
+    if (payload == null || typeof payload !== 'object') {
+      throw new Error(`Invalid ${kind} entity payload.`)
+    }
+    const common = (payload as Record<string, unknown>).common
+    if (common == null || typeof common !== 'object' || Array.isArray(common)) {
+      throw new Error(`Entity ${kind} has no common property block.`)
+    }
+    return common as Record<string, unknown>
+  }
+
+  async getColor(): Promise<unknown> {
+    return this.readCommon<unknown>('color')
+  }
+
+  async getLineWeight(): Promise<unknown> {
+    return this.readCommon<unknown>('line_weight')
+  }
+
+  async getTransparency(): Promise<unknown> {
+    return this.readCommon<unknown>('transparency')
+  }
+
+  async getOwnerHandle(): Promise<string | null> {
+    const owner = await this.readCommon<unknown>('owner_handle')
+    return owner == null ? null : normalizeDwgHandle(owner as DwgHandleLike)
+  }
+
+  async getReactors(): Promise<unknown[]> {
+    const reactors = await this.readCommon<unknown>('reactors')
+    return Array.isArray(reactors) ? reactors : []
+  }
+
+  async getExtendedData(): Promise<unknown[]> {
+    const data = await this.readCommon<unknown>('extended_data')
+    if (data == null || typeof data !== 'object') return []
+    const records = (data as Record<string, unknown>).records
+    return Array.isArray(records) ? records : []
+  }
+
   async getLayer(): Promise<string> {
     return this.readCommon<string>('layer')
   }
