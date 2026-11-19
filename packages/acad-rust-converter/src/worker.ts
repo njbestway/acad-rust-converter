@@ -85,6 +85,7 @@ import {
   dwg_dynamic_block_index_json,
   dwg_insert_sequence_json,
   dwg_roundtrip_audit_json,
+  dwg_opaque_object_index_json,
   dwg_save,
   dwg_remove_entity,
   dwg_to_dxf,
@@ -116,6 +117,7 @@ type WorkerRequest =
   | { id: number; kind: 'dynamic-block-index'; handle: number }
   | { id: number; kind: 'insert-sequence'; handle: number; entityHandle: string }
   | { id: number; kind: 'roundtrip-audit'; handle: number }
+  | { id: number; kind: 'opaque-object-index'; handle: number }
   | { id: number; kind: 'page'; handle: number; offset: number; limit: number }
   | { id: number; kind: 'entity-handles-page'; handle: number; offset: number; limit: number }
   | { id: number; kind: 'add-block-record'; handle: number; name: string; basePoint: string; description: string }
@@ -346,6 +348,13 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             type: 'result',
             id,
             json: dwg_insert_sequence_json(handle, request.entityHandle)
+          })
+          break
+        case 'opaque-object-index':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_opaque_object_index_json(handle)
           })
           break
         case 'roundtrip-audit':
