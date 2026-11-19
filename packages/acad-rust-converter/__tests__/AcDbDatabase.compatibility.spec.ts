@@ -189,6 +189,35 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(db.getObjectIdForHandle(exactHandle)).toBe('mlight-object-1')
   })
 
+  it('validates transaction depth before mutating the resident document', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+
+    await expect(db.commitTransaction()).rejects.toThrow('No active transaction')
+    await expect(db.abortTransaction()).rejects.toThrow('No active transaction')
+    expect(client.commitTransaction).not.toHaveBeenCalled()
+    expect(client.abortTransaction).not.toHaveBeenCalled()
+    expect(db.transactionDepth).toBe(0)
+  })
+
+  it('retains the identity snapshot when the Rust rollback request fails', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    db.bindObjectIdentity('stable', 'AB')
+    await db.beginTransaction()
+    db.bindObjectIdentity('temporary', 'AC')
+    client.abortTransaction.mockRejectedValueOnce(new Error('worker unavailable'))
+
+    await expect(db.abortTransaction()).rejects.toThrow('worker unavailable')
+    expect(db.transactionDepth).toBe(1)
+    expect(db.getObjectIdForHandle('AC')).toBe('temporary')
+
+    await db.abortTransaction()
+    expect(db.transactionDepth).toBe(0)
+    expect(db.getObjectIdForHandle('AC')).toBeUndefined()
+    expect(db.getObjectIdForHandle('AB')).toBe('stable')
+  })
+
   it('rolls back a failed transaction and closes idempotently', async () => {
     const client = createClient()
     const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
