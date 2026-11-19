@@ -376,10 +376,12 @@ fn collect_exact_handles(
                 path.push(key.clone());
                 let is_handle_field = key == "handle"
                     || key.ends_with("_handle")
-                    || key == "owner"
-                    || key == "block_record"
-                    || key == "block_entity"
-                    || key == "block_end";
+                    || matches!(
+                        key.as_str(),
+                        "owner" | "block_record" | "block_entity" | "block_end"
+                            | "block" | "dependency" | "expression"
+                            | "associated_variable" | "material"
+                    );
                 if is_handle_field {
                     if let Some(raw) = child.as_u64() {
                         output.push(ExactHandlePath {
@@ -395,7 +397,8 @@ fn collect_exact_handles(
                     key.as_str(),
                     "reactors" | "viewports" | "entities" | "object_references"
                         | "entity_handles" | "insert_handles" | "hard_owner_entries"
-                        | "handles" | "attribute_handles"
+                        | "handles" | "attribute_handles" | "dependencies"
+                        | "all_blocks" | "visible_blocks" | "visible_params"
                 );
                 if is_handle_array {
                     if let Some(items) = child.as_array() {
