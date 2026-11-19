@@ -138,7 +138,7 @@ describe('AcDbDatabase compatibility proxies', () => {
           xref_path: '',
           description: '',
           insert_handles: [],
-          base_point: [0, 0, 0]
+          base_point: { x: 0, y: 0, z: 0 }
         }
       }
     } as never)
