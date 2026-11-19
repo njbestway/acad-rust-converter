@@ -87,6 +87,8 @@ export interface AcadRustDocumentClient {
   updateLineGeometry(handle: number, entityHandle: string, geometry: { start?: AcadRustPoint3d; end?: AcadRustPoint3d }): Promise<void>
   /** Typed CIRCLE/ARC geometry update; preserves all handle-bearing fields. */
   updateCircleArcGeometry(handle: number, entityHandle: string, geometry: AcadRustCircleArcGeometryPatch): Promise<void>
+  /** Typed ELLIPSE geometry update; preserves common/reference fields. */
+  updateEllipseGeometry(handle: number, entityHandle: string, geometry: AcadRustEllipseGeometryPatch): Promise<void>
   /** Typed INSERT placement update; leaves block and ATTRIB references untouched. */
   updateInsertPlacement(handle: number, entityHandle: string, patch: AcadRustInsertPlacementPatch): Promise<void>
   updateInsertAttributeValue(handle: number, insertHandle: string, tag: string, value: string): Promise<void>
@@ -226,6 +228,15 @@ export interface AcadRustCircleArcGeometryPatch {
   radius?: number
   startAngle?: number
   endAngle?: number
+}
+
+export interface AcadRustEllipseGeometryPatch {
+  center?: AcadRustPoint3d
+  majorAxis?: AcadRustPoint3d
+  minorAxisRatio?: number
+  startParameter?: number
+  endParameter?: number
+  normal?: AcadRustPoint3d
 }
 
 export interface AcadRustInsertPlacementPatch {
@@ -708,6 +719,27 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
         radius: geometry.radius,
         start_angle: geometry.startAngle,
         end_angle: geometry.endAngle
+      })
+    })
+  }
+
+  async updateEllipseGeometry(
+    handle: number,
+    entityHandle: string,
+    geometry: AcadRustEllipseGeometryPatch
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-ellipse',
+      handle,
+      entityHandle,
+      geometryJson: JSON.stringify({
+        center: geometry.center,
+        major_axis: geometry.majorAxis,
+        minor_axis_ratio: geometry.minorAxisRatio,
+        start_parameter: geometry.startParameter,
+        end_parameter: geometry.endParameter,
+        normal: geometry.normal
       })
     })
   }
