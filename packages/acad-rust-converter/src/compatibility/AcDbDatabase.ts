@@ -19,7 +19,7 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
-export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string }
+export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string } | { ownerHandle: string }
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
@@ -270,6 +270,18 @@ export class AcDbDatabase {
   }
 
   /** @internal Append an entity to a resident block definition. */
+  async moveEntityToBlock(handle: AcDbHandle, blockName: string): Promise<void> {
+    this.assertOpen()
+    await this.client.moveEntityToBlock(this.documentHandle, handle, blockName)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({
+      type: 'objectModified',
+      handle,
+      entity,
+      patch: { ownerHandle: blockName }
+    })
+  }
+
   async appendBlockEntity(name: string, entity: AcadRustEntity): Promise<AcDbEntity> {
     this.assertOpen()
     const handle = await this.client.addEntityToBlock(
@@ -448,6 +460,10 @@ export class AcDbEntity {
     return this.readCommon<string>('layer')
   }
 
+  async moveToBlock(blockName: string): Promise<void> {
+    await this.database.moveEntityToBlock(this.handle, blockName)
+  }
+
   async setLayer(layer: string): Promise<void> {
     await this.database.patchEntity(this.handle, { layer })
   }
@@ -615,6 +631,11 @@ export class AcDbBlockTableRecord {
 
   async getEntityCount(): Promise<number> {
     return (await this.getEntityHandles()).length
+  }
+
+  /** Move an existing entity into this block and update its Owner link. */
+  async moveEntityHere(entityHandle: DwgHandleLike): Promise<void> {
+    await this.database.moveEntityToBlock(normalizeDwgHandle(entityHandle), this.record.name)
   }
 
   /** Append an entity to this block definition; Rust assigns its Handle. */
