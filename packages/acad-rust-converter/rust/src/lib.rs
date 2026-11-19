@@ -2475,8 +2475,14 @@ mod dimension_measurement_cache_tests {
             acadrust::types::Vector3::new(30.0, 40.0, 0.0),
         );
         dimension.base.actual_measurement = 999.0;
-        let entity_handle = dimension.base.common.handle;
         document.add_entity(acadrust::EntityType::Dimension(Dimension::Linear(dimension))).unwrap();
+        let entity_handle = document.entities().find_map(|entity| {
+            if let acadrust::EntityType::Dimension(dimension) = entity {
+                Some(dimension.base().common.handle)
+            } else {
+                None
+            }
+        }).unwrap();
 
         refresh_dimension_measurement_cache(&mut document).unwrap();
 
