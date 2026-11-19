@@ -1097,7 +1097,14 @@ pub fn dwg_update_spline_geometry_json(
                 return Err(JsValue::from_str("SPLINE knot values must be non-decreasing."));
             }
             if geometry_arrays_changed && !control_points.is_empty() {
-                if !knots.is_empty() && knots.len() != control_points.len() + degree as usize + 1 {
+                if degree < 1 {
+                    return Err(JsValue::from_str("SPLINE degree must be at least 1 when control points are present."));
+                }
+                let expected_knot_count = control_points.len()
+                    .checked_add(degree as usize)
+                    .and_then(|count| count.checked_add(1))
+                    .ok_or_else(|| JsValue::from_str("SPLINE control-point and degree counts overflow."))?;
+                if knots.len() != expected_knot_count {
                     return Err(JsValue::from_str("SPLINE knot count must equal control-point count + degree + 1."));
                 }
                 if !weights.is_empty() && weights.len() != control_points.len() {
