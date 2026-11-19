@@ -55,3 +55,10 @@ The typed geometry mutation set now includes LINE endpoints and CIRCLE/ARC cente
 - More typed geometry/property patch families remain to be added (including LWPOLYLINE/POLYLINE, ELLIPSE, SPLINE, TEXT/MTEXT, INSERT and dimensions).
 - Dictionary, reactor, XData and extension-dictionary mutation/reference maintenance remain outstanding. Existing resident objects should be preserved in-place until typed operations exist; do not deserialize and replace arbitrary handle-bearing object JSON.
 - Rust/TypeScript build, Jest, native DWG round-trip and AutoCAD open/AUDIT validation are still required. No passing result is implied by the presence of tests.
+
+
+## Transaction failure-path hardening
+
+The TypeScript façade now checks its transaction depth before issuing Rust commit/abort requests. This prevents a façade/Rust stack mismatch from committing or rolling back the resident document before discovering that no corresponding identity snapshot exists. Identity snapshots are retained until Rust confirms abort; if the worker rejects the rollback request, the caller can retry. The transaction() helper preserves the original action/commit error if rollback also fails, attaching the secondary failure as rollbackError. A read-only transactionDepth reports the façade's current nested depth.
+
+Jest cases cover empty-stack commit/abort rejection and retry after a failed worker rollback. These tests have been added but are not executed in this environment.
