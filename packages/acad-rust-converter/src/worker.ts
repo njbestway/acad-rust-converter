@@ -98,6 +98,7 @@ type WorkerRequest =
       limit: number
     }
   | { id: number; kind: 'block-batch'; handle: number; names: string }
+  | { id: number; kind: 'block-handles'; handle: number; block: string }
   | { id: number; kind: 'close'; handle: number }
   | { id: number; kind: 'begin-transaction' | 'commit-transaction' | 'abort-transaction'; handle: number }
   | { id: number; kind: 'add-entity'; handle: number; entityJson: string }
