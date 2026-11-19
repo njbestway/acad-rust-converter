@@ -78,6 +78,8 @@ import {
   dwg_update_circle_arc_geometry_json,
   dwg_update_ellipse_geometry_json,
   dwg_update_spline_geometry_json,
+  dwg_update_text_geometry_json,
+  dwg_update_mtext_geometry_json,
   dwg_update_insert_placement_json,
   dwg_update_insert_attribute_value,
   dwg_update_attdef_default_value,
@@ -561,6 +563,14 @@ ctx.addEventListener('message', (event: MessageEvent) => {
           break
         case 'update-spline':
           dwg_update_spline_geometry_json(handle, request.entityHandle, request.geometryJson)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'update-text':
+          dwg_update_text_geometry_json(handle, request.entityHandle, request.geometryJson)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'update-mtext':
+          dwg_update_mtext_geometry_json(handle, request.entityHandle, request.geometryJson)
           ctx.postMessage({ type: 'result', id })
           break
         case 'save': {
