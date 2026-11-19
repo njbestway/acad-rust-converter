@@ -48,8 +48,8 @@ export interface AcadRustDocumentClient {
   addEntity(handle: number, entityJson: string): Promise<string>
   /** Read one entity by its lossless hexadecimal DWG handle. */
   getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
-  /** Replace one existing entity without changing its identity or owner. */
-  updateEntity(handle: number, entityHandle: string, entityJson: string): Promise<void>
+  /** Patch reference-safe common properties without round-tripping embedded handles. */
+  updateEntityCommon(handle: number, entityHandle: string, patch: AcadRustEntityCommonPatch): Promise<void>
   /** Remove an entity by its lossless hexadecimal DWG handle. */
   removeEntity(handle: number, entityHandle: string): Promise<boolean>
   /** Native DWG serialization of the current resident document. */
@@ -60,6 +60,13 @@ export interface AcadRustDocumentClient {
   close(handle: number): Promise<void>
   /** Tear down any transport (worker) resources; safe to call more than once. */
   dispose(): void
+}
+
+export interface AcadRustEntityCommonPatch {
+  layer?: string
+  linetype?: string
+  linetypeScale?: number
+  invisible?: boolean
 }
 
 /** One block definition returned by {@link AcadRustDocumentClient.blockEntitiesBatch}. */
@@ -243,8 +250,18 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
     return this.parseJson<AcadRustEntity>(result, 'entity')
   }
 
-  async updateEntity(handle: number, entityHandle: string, entityJson: string): Promise<void> {
-    await this.request({ id: 0, kind: 'update-entity', handle, entityHandle, entityJson })
+  async updateEntityCommon(
+    handle: number,
+    entityHandle: string,
+    patch: AcadRustEntityCommonPatch
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-entity-common',
+      handle,
+      entityHandle,
+      patchJson: JSON.stringify(patch)
+    })
   }
 
   async removeEntity(handle: number, entityHandle: string): Promise<boolean> {
