@@ -53,6 +53,12 @@ export interface AcadRustDocumentClient {
   ): Promise<AcadRustBlockEntityGroup[]>
   /** Add one acadrust EntityType to model space; returns its lossless hex handle. */
   addEntity(handle: number, entityJson: string): Promise<string>
+  /** Create a BLOCK-RECORD with matching BLOCK and ENDBLK structural markers. */
+  addBlockRecord(handle: number, name: string, basePoint: AcadRustPoint3d, description?: string): Promise<AcadRustCreatedBlockRecord>
+  /** Append an ordinary entity to an existing block and update owner membership. */
+  addEntityToBlock(handle: number, blockName: string, entityJson: string): Promise<string>
+  /** Remove only an empty, unreferenced user block definition. */
+  removeEmptyBlockRecord(handle: number, blockName: string): Promise<boolean>
   /** Read one entity by its lossless hexadecimal DWG handle. */
   getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
   /** Typed geometry update for LINE endpoints; leaves all reference fields untouched. */
@@ -71,6 +77,13 @@ export interface AcadRustDocumentClient {
   close(handle: number): Promise<void>
   /** Tear down any transport (worker) resources; safe to call more than once. */
   dispose(): void
+}
+
+export interface AcadRustCreatedBlockRecord {
+  name: string
+  handle: string
+  blockEntityHandle: string
+  blockEndHandle: string
 }
 
 export interface AcadRustExactHandlePath {
@@ -295,6 +308,49 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       result,
       'block-entities-batch'
     )
+  }
+
+  async addBlockRecord(
+    handle: number,
+    name: string,
+    basePoint: AcadRustPoint3d,
+    description = ''
+  ): Promise<AcadRustCreatedBlockRecord> {
+    const result = await this.request({
+      id: 0,
+      kind: 'add-block-record',
+      handle,
+      name,
+      basePoint: JSON.stringify(basePoint),
+      description
+    })
+    return this.parseJson<AcadRustCreatedBlockRecord>(result, 'created-block-record')
+  }
+
+  async addEntityToBlock(
+    handle: number,
+    blockName: string,
+    entityJson: string
+  ): Promise<string> {
+    const result = await this.request({
+      id: 0,
+      kind: 'add-block-entity',
+      handle,
+      block: blockName,
+      entity: entityJson
+    })
+    if (result.entityHandle == null) throw new Error('acad-rust worker returned no block entity handle.')
+    return result.entityHandle
+  }
+
+  async removeEmptyBlockRecord(handle: number, blockName: string): Promise<boolean> {
+    const result = await this.request({
+      id: 0,
+      kind: 'remove-empty-block',
+      handle,
+      block: blockName
+    })
+    return result.removed === true
   }
 
   async addEntity(handle: number, entityJson: string): Promise<string> {
