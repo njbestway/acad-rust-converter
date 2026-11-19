@@ -512,6 +512,51 @@ pub fn dwg_add_entity_json(handle: u32, entity_json: &str) -> Result<String, JsV
     })
 }
 
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EntityCommonPatch {
+    layer: Option<String>,
+    linetype: Option<String>,
+    linetype_scale: Option<f64>,
+    invisible: Option<bool>,
+}
+
+/// Update only reference-safe common properties. Geometry and handle-bearing
+/// fields are deliberately excluded from this patch protocol so JS number
+/// precision cannot corrupt embedded u64 references.
+#[wasm_bindgen]
+pub fn dwg_update_entity_common_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    patch_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: EntityCommonPatch = serde_json::from_str(patch_json)
+            .map_err(to_js("entity common patch JSON parse failed"))?;
+        if let Some(layer) = patch.layer.as_ref() {
+            if layer.trim().is_empty() {
+                return Err(JsValue::from_str("Entity layer must not be empty."));
+            }
+        }
+        if let Some(scale) = patch.linetype_scale {
+            if !scale.is_finite() || scale <= 0.0 {
+                return Err(JsValue::from_str("Linetype scale must be finite and greater than zero."));
+            }
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            let common = entity.common_mut();
+            if let Some(layer) = patch.layer { common.layer = layer; }
+            if let Some(linetype) = patch.linetype { common.linetype = linetype; }
+            if let Some(scale) = patch.linetype_scale { common.linetype_scale = scale; }
+            if let Some(invisible) = patch.invisible { common.invisible = invisible; }
+            Ok(())
+        })
+    })
+}
+
 /// Read one entity by its exact hexadecimal DWG handle.
 #[wasm_bindgen]
 pub fn dwg_entity_json(handle: u32, entity_handle_hex: &str) -> Result<String, JsValue> {
@@ -521,42 +566,6 @@ pub fn dwg_entity_json(handle: u32, entity_handle_hex: &str) -> Result<String, J
             let entity = doc.get_entity(entity_handle)
                 .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
             to_json("acadrust entity serialize failed", entity)
-        })
-    })
-}
-
-/// Replace the public serde representation of one existing entity.
-///
-/// The identity and owner are authoritative in the resident document, not in
-/// caller JSON. Variant changes are rejected because they can invalidate
-/// entity-specific references and block membership. Storage-only DWG payload
-/// is copied from the existing entity before replacement.
-#[wasm_bindgen]
-pub fn dwg_update_entity_json(
-    handle: u32,
-    entity_handle_hex: &str,
-    entity_json: &str,
-) -> Result<(), JsValue> {
-    guard(|| {
-        let entity_handle = parse_handle_hex(entity_handle_hex)?;
-        let mut replacement: acadrust::EntityType = serde_json::from_str(entity_json)
-            .map_err(to_js("acadrust entity JSON parse failed"))?;
-        with_document_mut(handle, |doc| {
-            let source = doc.get_entity(entity_handle)
-                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?
-                .clone();
-            if std::mem::discriminant(&source) != std::mem::discriminant(&replacement) {
-                return Err(JsValue::from_str(
-                    "Entity variant cannot be changed in-place; erase and add a new entity instead.",
-                ));
-            }
-            replacement.common_mut().handle = entity_handle;
-            replacement.common_mut().owner_handle = source.common().owner_handle;
-            replacement.preserve_storage_data_from(&source);
-            let target = doc.get_entity_mut(entity_handle)
-                .ok_or_else(|| JsValue::from_str("DWG entity disappeared during update."))?;
-            *target = replacement;
-            Ok(())
         })
     })
 }
