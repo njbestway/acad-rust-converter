@@ -992,6 +992,65 @@ pub fn dwg_update_ellipse_geometry_json(
 }
 
 #[derive(serde::Deserialize, Default)]
+struct DimensionBasePatch {
+    text_override: Option<Option<String>>,
+    text_middle_point: Option<Point3Patch>,
+    text_rotation: Option<f64>,
+    horizontal_direction: Option<f64>,
+    style_name: Option<String>,
+    line_spacing_factor: Option<f64>,
+    line_spacing_style: Option<i16>,
+    text_user_positioned: Option<bool>,
+    flip_arrow1: Option<bool>,
+    flip_arrow2: Option<bool>,
+}
+/// Update display-level dimension data while preserving subtype, anonymous
+/// block name, DimStyle reference and EntityCommon.
+#[wasm_bindgen]
+pub fn dwg_update_dimension_base_json(handle: u32, entity_handle_hex: &str, patch_json: &str) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: DimensionBasePatch = serde_json::from_str(patch_json)
+            .map_err(to_js("DIMENSION patch JSON parse failed"))?;
+        if [patch.text_rotation, patch.horizontal_direction, patch.line_spacing_factor]
+            .iter().flatten().any(|value| !value.is_finite()) {
+            return Err(JsValue::from_str("DIMENSION numeric values must be finite."));
+        }
+        if patch.line_spacing_factor.is_some_and(|value| value <= 0.0) {
+            return Err(JsValue::from_str("DIMENSION line spacing factor must be positive."));
+        }
+        if patch.line_spacing_style.is_some_and(|value| !(1..=2).contains(&value)) {
+            return Err(JsValue::from_str("DIMENSION line spacing style must be 1 or 2."));
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            let dimension = match entity {
+                acadrust::EntityType::Dimension(dimension) => dimension,
+                _ => return Err(JsValue::from_str("The target entity is not DIMENSION.")),
+            };
+            let base = dimension.base_mut();
+            if let Some(value) = patch.text_override { base.set_text_override(value); }
+            if let Some(point) = patch.text_middle_point {
+                base.text_middle_point = acadrust::types::Vector3::new(point.x, point.y, point.z);
+            }
+            if let Some(value) = patch.text_rotation { base.text_rotation = value; }
+            if let Some(value) = patch.horizontal_direction { base.horizontal_direction = value; }
+            if let Some(value) = patch.style_name { base.style_name = value; }
+            if let Some(value) = patch.line_spacing_factor { base.line_spacing_factor = value; }
+            if let Some(value) = patch.line_spacing_style { base.line_spacing_style = value; }
+            if let Some(value) = patch.text_user_positioned {
+                base.text_user_positioned = value;
+                if value { base.dwg_flags_byte &= !0x01; } else { base.dwg_flags_byte |= 0x01; }
+            }
+            if let Some(value) = patch.flip_arrow1 { base.flip_arrow1 = value; }
+            if let Some(value) = patch.flip_arrow2 { base.flip_arrow2 = value; }
+            Ok(())
+        })
+    })
+}
+
+#[derive(serde::Deserialize, Default)]
 struct TextGeometryPatch {
     value: Option<String>, insertion_point: Option<Point3Patch>,
     alignment_point: Option<Option<Point3Patch>>, height: Option<f64>,
