@@ -109,3 +109,6 @@ The façade now exposes XDATA read/upsert/remove, Extension Dictionary creation,
 The native converter also accepts an optional `identityMap: ObjectIdentityMap` config. When supplied, each successful graphical entity mapping automatically binds the newly assigned MLightCAD ObjectId to the exact DWG handle; `onObjectIdentity` remains available as an observer callback. This is currently graphical entity coverage, not a blanket identity map for symbol-table records and non-graphical OBJECTS items.
 
 XDATA and XRecord `Handle` enum values in mutation payloads must be supplied as hexadecimal strings. Rust converts them to the pinned acadrust u64 Handle representation internally; numeric JS-originated handle payloads are rejected to avoid precision loss. XRecord handle references are validated against the resident document before replacement.
+
+
+The optional converter `identityMap` now also binds the mapped LAYER, LTYPE, STYLE, DIMSTYLE, VPORT and BLOCK-RECORD table records by matching their database-generated ObjectIds to the exact `entries/<name>/handle` paths in the section sidecar. This still does not automatically cover every OBJECTS variant or all non-graphical records.
