@@ -114,6 +114,8 @@ XDATA and XRecord `Handle` enum values in mutation payloads must be supplied as 
 
 The optional converter `identityMap` now also binds the mapped LAYER, LTYPE, STYLE, DIMSTYLE, VPORT and BLOCK-RECORD table records by matching their database-generated ObjectIds to the exact `entries/<name>/handle` paths in the section sidecar. This still does not automatically cover every OBJECTS variant or all non-graphical records.
 
+OBJECTS identity capture now discovers enumerable MLightCAD object containers dynamically instead of relying on a fixed list of dictionary property names. Every materialized object with a non-empty string ObjectId is indexed and matched against exact OBJECTS Handle sidecar entries; duplicate Handle paths are emitted once. This broadens coverage when MLightCAD adds typed object dictionaries, but it cannot create ObjectIds for unsupported/custom objects that remain opaque only in Rust.
+
 
 ### Owner reassignment / moving entities between blocks
 
