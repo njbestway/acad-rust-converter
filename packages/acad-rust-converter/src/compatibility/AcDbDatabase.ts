@@ -10,6 +10,7 @@ import {
   type AcadRustEntityCommonPatch,
   type AcadRustLwPolylineGeometryPatch,
   type AcadRustCircleArcGeometryPatch,
+  type AcadRustEllipseGeometryPatch,
   type AcadRustLwPolylineVertex,
   type AcadRustInsertPlacementPatch,
   type AcadRustDynamicBlockIndex,
@@ -347,6 +348,17 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
+  /** @internal ELLIPSE geometry proxy bridge. */
+  async patchEllipseGeometry(
+    handle: AcDbHandle,
+    geometry: AcadRustEllipseGeometryPatch
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.updateEllipseGeometry(this.documentHandle, handle, geometry)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch: geometry })
+  }
+
   /** @internal Block-table proxy bridge. */
   async readBlockRecords(): Promise<AcadRustBlockRecordTable> {
     this.assertOpen()
@@ -643,6 +655,13 @@ export class AcDbEntity {
 
   async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
     await this.database.patchLineGeometry(this.handle, { start, end })
+  }
+
+  async setEllipseGeometry(geometry: AcadRustEllipseGeometryPatch): Promise<void> {
+    if (await this.getClassName() !== 'Ellipse') {
+      throw new Error(`Entity ${this.handle} is not an ELLIPSE.`)
+    }
+    await this.database.patchEllipseGeometry(this.handle, geometry)
   }
 
   async setCircleGeometry(geometry: { center?: AcadRustPoint3d; radius?: number }): Promise<void> {
