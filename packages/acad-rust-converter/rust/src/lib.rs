@@ -1071,6 +1071,7 @@ pub fn dwg_update_spline_geometry_json(
             let mut weights = spline.weights.clone();
             let mut fit_points = spline.fit_points.clone();
             if let Some(value) = patch.degree { degree = value; }
+            let rational_flag_changed = patch.flags.as_ref().is_some_and(|f| f.rational.is_some());
             if let Some(update) = patch.flags {
                 if let Some(value) = update.closed { flags.closed = value; }
                 if let Some(value) = update.periodic { flags.periodic = value; }
@@ -1094,7 +1095,7 @@ pub fn dwg_update_spline_geometry_json(
                 || patch.knots.is_some()
                 || patch.control_points.is_some()
                 || patch.weights.is_some()
-                || patch.flags.as_ref().is_some_and(|f| f.rational.is_some());
+                || rational_flag_changed;
             if geometry_arrays_changed && !control_points.is_empty() {
                 if !knots.is_empty() && knots.len() != control_points.len() + degree as usize + 1 {
                     return Err(JsValue::from_str("SPLINE knot count must equal control-point count + degree + 1."));
