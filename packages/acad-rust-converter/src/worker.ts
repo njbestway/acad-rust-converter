@@ -72,6 +72,8 @@ import {
   dwg_update_line_geometry_json,
   dwg_update_circle_arc_geometry_json,
   dwg_update_insert_placement_json,
+  dwg_update_insert_attribute_value,
+  dwg_update_attdef_default_value,
   dwg_meta,
   dwg_open,
   dwg_section_json,
@@ -135,6 +137,8 @@ type WorkerRequest =
   | { id: number; kind: 'update-line'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-circle-arc'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-insert-placement'; handle: number; entityHandle: string; patchJson: string }
+  | { id: number; kind: 'update-insert-attribute'; handle: number; entityHandle: string; tag: string; value: string }
+  | { id: number; kind: 'update-attdef-default'; handle: number; entityHandle: string; value: string }
   | { id: number; kind: 'save'; handle: number }
 
 interface WorkerResult {
@@ -451,6 +455,14 @@ ctx.addEventListener('message', (event: MessageEvent) => {
           break
         case 'update-entity-common':
           dwg_update_entity_common_json(handle, request.entityHandle, request.patchJson)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'update-insert-attribute':
+          dwg_update_insert_attribute_value(handle, request.entityHandle, request.tag, request.value)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'update-attdef-default':
+          dwg_update_attdef_default_value(handle, request.entityHandle, request.value)
           ctx.postMessage({ type: 'result', id })
           break
         case 'update-insert-placement':
