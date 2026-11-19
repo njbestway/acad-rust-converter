@@ -842,6 +842,9 @@ pub fn dwg_add_entity_to_block_json(
         let owner = record.handle;
         let mut entity: acadrust::EntityType = serde_json::from_str(entity_json)
             .map_err(to_js("block entity JSON parse failed"))?;
+        if !entity.common().handle.is_null() {
+            return Err(JsValue::from_str("New block entities must not supply a pre-existing DWG handle."));
+        }
         if matches!(
             &entity,
             acadrust::EntityType::AttributeEntity(_)
@@ -868,7 +871,16 @@ pub fn dwg_remove_empty_block_record(handle: u32, block_name: &str) -> Result<bo
         if record.is_standard() || record.is_layout() {
             return Err(JsValue::from_str("Cannot remove model/paper space or layout block records."));
         }
-        if !record.entity_handles.is_empty() || !record.insert_handles.is_empty()
+        let has_dictionary_refs = doc.objects.values().any(|object| match object {
+            acadrust::objects::ObjectType::Dictionary(dictionary) => dictionary.entries.iter()
+                .any(|(_, target)| *target == record.handle),
+            _ => false,
+        });
+        if !record.entity_handles.is_empty()
+            || !record.insert_handles.is_empty()
+            || doc.extension_dictionary_handle(record.handle).is_some()
+            || doc.object_xdata(record.handle).is_some()
+            || has_dictionary_refs
             || doc.entities().any(|entity| matches!(
                 entity,
                 acadrust::EntityType::Insert(insert)
@@ -1235,6 +1247,12 @@ pub fn dwg_set_extension_dictionary_entry(
             return Err(JsValue::from_str("Dictionary key cannot be empty."));
         }
         with_document_mut(handle, |doc| {
+            if !document_has_handle(doc, owner) {
+                return Err(JsValue::from_str("Dictionary owner handle does not resolve."));
+            }
+            if owner == target {
+                return Err(JsValue::from_str("An Extension Dictionary entry cannot target its own owner."));
+            }
             if !document_has_handle(doc, target) {
                 return Err(JsValue::from_str("Dictionary target handle does not resolve."));
             }
