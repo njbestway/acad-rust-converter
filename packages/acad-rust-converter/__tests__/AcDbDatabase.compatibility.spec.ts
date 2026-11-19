@@ -41,6 +41,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       updateSplineGeometry: jest.fn().mockResolvedValue(undefined),
       updateTextGeometry: jest.fn().mockResolvedValue(undefined),
       updateMTextGeometry: jest.fn().mockResolvedValue(undefined),
+      updateDimensionBase: jest.fn().mockResolvedValue(undefined),
       updateInsertPlacement: jest.fn().mockResolvedValue(undefined),
       updateInsertAttributeValue: jest.fn().mockResolvedValue(undefined),
       updateAttdefDefaultValue: jest.fn().mockResolvedValue(undefined),
@@ -205,6 +206,25 @@ describe('AcDbDatabase compatibility proxies', () => {
 
     await entity.setSplineGeometry(patch)
     expect(client.updateSplineGeometry).toHaveBeenCalledWith(7, '2A', patch)
+  })
+
+  it('updates DIMENSION display properties through the native typed proxy', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    jest.spyOn(entity, 'getClassName').mockResolvedValue('Dimension')
+    const patch = {
+      textOverride: 'L=<>',
+      textMiddlePoint: { x: 10, y: 20, z: 0 },
+      textRotation: 0.25,
+      styleName: 'Standard',
+      lineSpacingFactor: 1.0,
+      lineSpacingStyle: 1 as const,
+      textUserPositioned: true,
+      flipArrow1: false
+    }
+    await entity.setDimensionProperties(patch)
+    expect(client.updateDimensionBase).toHaveBeenCalledWith(7, '2A', patch)
   })
 
   it('updates TEXT through the native typed proxy', async () => {
