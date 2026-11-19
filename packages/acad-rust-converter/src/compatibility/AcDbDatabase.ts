@@ -216,6 +216,41 @@ export class AcDbDatabase {
     return this.client.dynamicBlockIndex(this.documentHandle)
   }
 
+  /**
+   * Resolve all dynamic-block metadata associated with one exact DWG handle.
+   * The returned index is a detached read model; mutations still go through
+   * the resident Rust document and are not implied by this lookup.
+   */
+  async getDynamicBlockInfo(handle: DwgHandleLike): Promise<{
+    objects: AcadRustDynamicBlockIndex['dynamicObjects']
+    visibilityParameters: AcadRustDynamicBlockIndex['visibilityParameters']
+    representations: AcadRustDynamicBlockIndex['representations']
+  }> {
+    this.assertOpen()
+    const canonical = normalizeDwgHandle(handle)
+    const index = await this.client.dynamicBlockIndex(this.documentHandle)
+    const objects = index.dynamicObjects.filter(item =>
+      normalizeDwgHandle(item.handle) === canonical ||
+      normalizeDwgHandle(item.owner) === canonical
+    )
+    const objectHandles = new Set(objects.map(item => normalizeDwgHandle(item.handle)))
+    const visibilityParameters = index.visibilityParameters.filter(item =>
+      normalizeDwgHandle(item.handle) === canonical ||
+      normalizeDwgHandle(item.owner) === canonical ||
+      objects.some(object => normalizeDwgHandle(object.owner) === normalizeDwgHandle(item.owner))
+    )
+    const representations = index.representations.filter(item =>
+      normalizeDwgHandle(item.representationHandle) === canonical ||
+      normalizeDwgHandle(item.dynamicBlockHandle) === canonical ||
+      objectHandles.has(normalizeDwgHandle(item.dynamicBlockHandle))
+    )
+    return { objects, visibilityParameters, representations }
+  }
+
+  get isClosed(): boolean {
+    return this.closed
+  }
+
   /** Inspect an INSERT's embedded ATTRIB and SEQEND sequence integrity. */
   async getInsertSequence(insertHandle: DwgHandleLike): Promise<AcadRustInsertSequence> {
     this.assertOpen()
@@ -464,6 +499,80 @@ export class AcDbEntity {
   async getClassName(): Promise<string> {
     const data = await this.getData()
     return acadRustEntityKind(data) ?? 'Unknown'
+  }
+
+  /**
+   * Return the variant payload without duplicating it into a local entity store.
+   * The returned object is a snapshot from the authoritative Rust document.
+   */
+  async getGeometryData<T extends Record<string, unknown> = Record<string, unknown>>(): Promise<T> {
+    const data = await this.getData()
+    const kind = acadRustEntityKind(data)
+    if (kind == null) throw new Error(`Entity ${this.handle} has an invalid EntityType payload.`)
+    const payload = data[kind]
+    if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error(`Entity ${this.handle} has an invalid ${kind} payload.`)
+    }
+    const { common: _common, ...geometry } = payload as Record<string, unknown>
+    return geometry as T
+  }
+
+  async getPolylineVertices(): Promise<unknown[]> {
+    const kind = await this.getClassName()
+    if (!['LwPolyline', 'Polyline', 'Polyline2D', 'Polyline3D'].includes(kind)) {
+      throw new Error(`Entity ${this.handle} is not a polyline (${kind}).`)
+    }
+    const geometry = await this.getGeometryData()
+    if (!Array.isArray(geometry.vertices)) {
+      throw new Error(`Polyline ${this.handle} has no vertices array.`)
+    }
+    return geometry.vertices
+  }
+
+  async getEllipseParameters(): Promise<{
+    center: unknown
+    major_axis: unknown
+    minor_axis_ratio: number
+    start_parameter: number
+    end_parameter: number
+    normal: unknown
+  }> {
+    if (await this.getClassName() !== 'Ellipse') {
+      throw new Error(`Entity ${this.handle} is not an ELLIPSE.`)
+    }
+    const geometry = await this.getGeometryData()
+    return {
+      center: geometry.center,
+      major_axis: geometry.major_axis,
+      minor_axis_ratio: geometry.minor_axis_ratio as number,
+      start_parameter: geometry.start_parameter as number,
+      end_parameter: geometry.end_parameter as number,
+      normal: geometry.normal
+    }
+  }
+
+  /** Read INSERT/MINSERT payload and its ATTRIB/SEQEND chain by exact handle. */
+  async getBlockReferenceData(): Promise<{
+    kind: string
+    payload: Record<string, unknown>
+    sequence: AcadRustInsertSequence
+  }> {
+    const data = await this.getData()
+    const kind = acadRustEntityKind(data)
+    if (kind !== 'Insert' && kind !== 'MInsert') {
+      throw new Error(`Entity ${this.handle} is not an INSERT/MINSERT (${kind ?? 'Unknown'}).`)
+    }
+    const raw = data[kind]
+    if (raw == null || typeof raw !== 'object' || Array.isArray(raw)) {
+      throw new Error(`INSERT ${this.handle} has an invalid payload.`)
+    }
+    const sequence = await this.database.getInsertSequence(this.handle)
+    return { kind, payload: raw as Record<string, unknown>, sequence }
+  }
+
+  /** Resolve dynamic-block parameters/visibility links related to this handle. */
+  async getDynamicBlockInfo(): ReturnType<AcDbDatabase['getDynamicBlockInfo']> {
+    return this.database.getDynamicBlockInfo(this.handle)
   }
 
   async getLineEndpoints(): Promise<{ start: AcadRustPoint3d; end: AcadRustPoint3d }> {
