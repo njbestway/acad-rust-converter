@@ -211,6 +211,24 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
+  async patchInsertAttributeValue(
+    handle: AcDbHandle,
+    tag: string,
+    value: string
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.updateInsertAttributeValue(this.documentHandle, handle, tag, value)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch: { attributeTag: tag, attributeValue: value } as never })
+  }
+
+  async patchAttdefDefaultValue(handle: AcDbHandle, value: string): Promise<void> {
+    this.assertOpen()
+    await this.client.updateAttdefDefaultValue(this.documentHandle, handle, value)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch: { defaultValue: value } as never })
+  }
+
   async patchInsertPlacement(
     handle: AcDbHandle,
     patch: AcadRustInsertPlacementPatch
@@ -379,6 +397,14 @@ export class AcDbEntity {
 
   async setCircleGeometry(geometry: { center?: AcadRustPoint3d; radius?: number }): Promise<void> {
     await this.database.patchCircleArcGeometry(this.handle, geometry)
+  }
+
+  async setAttributeValue(tag: string, value: string): Promise<void> {
+    await this.database.patchInsertAttributeValue(this.handle, tag, value)
+  }
+
+  async setAttributeDefaultValue(value: string): Promise<void> {
+    await this.database.patchAttdefDefaultValue(this.handle, value)
   }
 
   async setInsertPlacement(patch: AcadRustInsertPlacementPatch): Promise<void> {
