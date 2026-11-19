@@ -48,6 +48,7 @@ import { join } from 'path'
 import { type AcadRustDocumentClient } from '../src/AcadRustSectionClient'
 import { AcDbAcadRustNativeConverter } from '../src/AcDbAcadRustNativeConverter'
 import type { AcadRustSectionKind } from '../src/model/acadrust-model'
+import { ObjectIdentityMap } from '../src/compatibility/ObjectIdentityMap'
 
 /**
  * Phase 4 §7 parity harness (hermetic, no worker / no wasm).
@@ -283,7 +284,8 @@ function tableNames(
 async function readNative(
   arg?: any[] | FixtureOptions,
   onObjectIdentity?: (objectId: string, dwgHandle: string) => void,
-  onSectionHandleIndex?: (kind: AcadRustSectionKind, entries: any[]) => void
+  onSectionHandleIndex?: (kind: AcadRustSectionKind, entries: any[]) => void,
+  identityMap?: ObjectIdentityMap
 ): Promise<{
   db: AcDbDatabase
   client: FixtureClient
@@ -296,7 +298,7 @@ async function readNative(
   // through their attribute constructors, but keep the working database bound so
   // any event side-effects resolve against it (matches how a host drives read()).
   acdbAssignWorkingDatabase(db)
-  const converter = new AcDbAcadRustNativeConverter({ client, onObjectIdentity, onSectionHandleIndex })
+  const converter = new AcDbAcadRustNativeConverter({ client, onObjectIdentity, onSectionHandleIndex, identityMap })
   // Capture the ENTITY-END stats (unknown count) via the progress callback.
   let unknownEntityCount = -1
   // Slice 0 never touches the bytes (the client replays fixtures), so an empty
@@ -1302,6 +1304,16 @@ describe('AcDbAcadRustNativeConverter block reference mapping (M4.2)', () => {
       .sort()
     // Native block definitions match the fixture set exactly (spaces excluded).
     expect(blockNames(db)).toEqual(expected)
+  })
+
+  it('automatically binds mapped ObjectIds into the supplied identity map', async () => {
+    const identities = new ObjectIdentityMap()
+    await readNative(undefined, undefined, undefined, identities)
+    expect(identities.size).toBeGreaterThan(0)
+    for (const entry of identities.entries()) {
+      expect(identities.getHandle(entry.objectId)).toBe(entry.handle)
+      expect(identities.getObjectId(entry.handle)).toBe(entry.objectId)
+    }
   })
 
   it('exposes lossless handle paths for every mapped document section when requested', async () => {
