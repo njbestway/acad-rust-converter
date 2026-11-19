@@ -81,6 +81,11 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(audit.reactorLinksEqual).toBe(true)
     expect(audit.contextScalesEqual).toBe(true)
     expect(audit.vxControlEntriesEqual).toBe(true)
+    expect(audit.eedRecordsEqual).toBe(true)
+    expect(audit.blockOwnedHandlesEqual).toBe(true)
+    expect(audit.dataStoreHandlesEqual).toBe(true)
+    expect(audit.acdsDataEqual).toBe(true)
+    expect(audit.metadataEqual).toBe(true)
   })
 
   it('exposes dynamic-block visibility and representation metadata', async () => {
