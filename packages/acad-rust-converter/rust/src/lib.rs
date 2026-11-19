@@ -1607,6 +1607,153 @@ pub fn dwg_insert_sequence_json(
     })
 }
 
+fn stable_bytes_fingerprint(bytes: &[u8]) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:016X}", hash)
+}
+
+/// Build a deterministic relationship-preservation snapshot. Every collection
+/// is sorted by exact handle before serialization, avoiding HashMap iteration
+/// order as a source of false round-trip differences.
+fn document_roundtrip_fingerprint(doc: &CadDocument) -> Result<serde_json::Value, JsValue> {
+    let mut entities = Vec::new();
+    for entity in doc.entities() {
+        let handle = entity.common().handle.value();
+        let payload = serde_json::to_value(entity)
+            .map_err(to_js("round-trip entity snapshot serialize failed"))?;
+        entities.push((handle, payload));
+    }
+    entities.sort_by_key(|(handle, _)| *handle);
+
+    let mut block_records = Vec::new();
+    for record in doc.block_records.iter() {
+        let handle = record.handle.value();
+        let members: Vec<String> = record.entity_handles.iter()
+            .map(|value| format!("{:X}", value.value())).collect();
+        let inserts: Vec<String> = record.insert_handles.iter()
+            .map(|value| format!("{:X}", value.value())).collect();
+        block_records.push(serde_json::json!({
+            "handle": format!("{:X}", handle),
+            "name": record.name,
+            "blockEntity": format!("{:X}", record.block_entity_handle.value()),
+            "blockEnd": format!("{:X}", record.block_end_handle.value()),
+            "members": members,
+            "inserts": inserts
+        }));
+    }
+    block_records.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let mut objects = Vec::new();
+    let mut opaque_objects = Vec::new();
+    for (handle, object) in &doc.objects {
+        let payload = serde_json::to_value(object)
+            .map_err(to_js("round-trip object snapshot serialize failed"))?;
+        objects.push((handle.value(), payload));
+        if let acadrust::objects::ObjectType::Unknown {
+            type_name,
+            handle: object_handle,
+            owner,
+            raw_dwg_data,
+            ..
+        } = object {
+            opaque_objects.push(serde_json::json!({
+                "handle": format!("{:X}", object_handle.value()),
+                "owner": format!("{:X}", owner.value()),
+                "typeName": type_name,
+                "rawBytesLength": raw_dwg_data.as_ref().map_or(0, |bytes| bytes.len()),
+                "rawBytesFingerprint": raw_dwg_data.as_ref()
+                    .map(|bytes| stable_bytes_fingerprint(bytes))
+            }));
+        }
+    }
+    objects.sort_by_key(|(handle, _)| *handle);
+    opaque_objects.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let mut object_xdata = Vec::new();
+    for (handle, data) in &doc.object_xdata {
+        object_xdata.push(serde_json::json!({
+            "handle": format!("{:X}", handle.value()),
+            "data": serde_json::to_value(data)
+                .map_err(to_js("round-trip XDATA snapshot serialize failed"))?
+        }));
+    }
+    object_xdata.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let mut visibility = Vec::new();
+    for (handle, value) in &doc.block_visibility_params {
+        visibility.push(serde_json::json!({
+            "handle": format!("{:X}", handle.value()),
+            "value": serde_json::to_value(value)
+                .map_err(to_js("round-trip dynamic visibility snapshot serialize failed"))?
+        }));
+    }
+    visibility.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let mut representations = Vec::new();
+    for (representation, definition) in &doc.block_representations {
+        representations.push(serde_json::json!([
+            format!("{:X}", representation.value()),
+            format!("{:X}", definition.value())
+        ]));
+    }
+    representations.sort_by(|a, b| a[0].as_str().cmp(&b[0].as_str()));
+
+    Ok(serde_json::json!({
+        "entities": entities.into_iter().map(|(_, value)| value).collect::<Vec<_>>(),
+        "blockRecords": block_records,
+        "objects": objects.into_iter().map(|(_, value)| value).collect::<Vec<_>>(),
+        "opaqueObjects": opaque_objects,
+        "objectXdata": object_xdata,
+        "dynamicVisibility": visibility,
+        "blockRepresentations": representations
+    }))
+}
+
+/// Save and reopen the resident document in memory, then compare a stable
+/// snapshot of entity geometry/references, block membership, OBJECTS, XDATA,
+/// dynamic visibility and opaque-object byte fingerprints. This validates the
+/// acadrust writer/reader pair only; AutoCAD compatibility still needs a
+/// separate external open + AUDIT test.
+#[wasm_bindgen]
+pub fn dwg_roundtrip_audit_json(handle: u32) -> Result<String, JsValue> {
+    guard(|| with_document(handle, |doc| {
+        let before = document_roundtrip_fingerprint(doc)?;
+        let bytes = DwgWriter::write_to_vec(doc)
+            .map_err(to_js("round-trip audit DWG write failed"))?;
+        let byte_length = bytes.len();
+        let mut reader = DwgReader::from_stream(Cursor::new(bytes));
+        let reopened = reader.read().map_err(to_js("round-trip audit DWG reopen failed"))?;
+        let after = document_roundtrip_fingerprint(&reopened)?;
+        let equal = |key: &str| before.get(key) == after.get(key);
+        let result = serde_json::json!({
+            "ok": before == after,
+            "dwgByteLength": byte_length,
+            "entityCount": before["entities"].as_array().map_or(0, |v| v.len()),
+            "blockRecordCount": before["blockRecords"].as_array().map_or(0, |v| v.len()),
+            "objectCount": before["objects"].as_array().map_or(0, |v| v.len()),
+            "opaqueObjectCount": before["opaqueObjects"].as_array().map_or(0, |v| v.len()),
+            "entitiesEqual": equal("entities"),
+            "blockRecordsEqual": equal("blockRecords"),
+            "objectsEqual": equal("objects"),
+            "opaqueObjectsEqual": equal("opaqueObjects"),
+            "objectXdataEqual": equal("objectXdata"),
+            "dynamicVisibilityEqual": equal("dynamicVisibility"),
+            "blockRepresentationsEqual": equal("blockRepresentations"),
+            "beforeFingerprint": stable_bytes_fingerprint(
+                &serde_json::to_vec(&before).map_err(to_js("before fingerprint serialize failed"))?
+            ),
+            "afterFingerprint": stable_bytes_fingerprint(
+                &serde_json::to_vec(&after).map_err(to_js("after fingerprint serialize failed"))?
+            )
+        });
+        to_json("round-trip audit result serialize failed", &result)
+    }))
+}
+
 #[wasm_bindgen]
 pub fn dwg_save(handle: u32) -> Result<Vec<u8>, JsValue> {
     guard(|| with_document(handle, |doc| {
