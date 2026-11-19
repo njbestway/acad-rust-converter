@@ -294,6 +294,30 @@ export class AcDbDatabase {
     return this.client.blockEntityHandles(this.documentHandle, name)
   }
 
+  async setEntityReactors(handle: AcDbHandle, reactorHandles: AcDbHandle[]): Promise<void> {
+    this.assertOpen()
+    await this.client.setEntityReactors(this.documentHandle, handle, reactorHandles)
+  }
+
+  async setExtensionDictionaryEntry(
+    ownerHandle: AcDbHandle,
+    key: string,
+    targetHandle: AcDbHandle,
+    hardOwner = false
+  ): Promise<AcDbHandle> {
+    this.assertOpen()
+    return normalizeDwgHandle(
+      await this.client.setExtensionDictionaryEntry(
+        this.documentHandle, ownerHandle, key, targetHandle, hardOwner
+      )
+    )
+  }
+
+  async removeExtensionDictionaryEntry(ownerHandle: AcDbHandle, key: string): Promise<boolean> {
+    this.assertOpen()
+    return this.client.removeExtensionDictionaryEntry(this.documentHandle, ownerHandle, key)
+  }
+
   async readObjectXdata<T = unknown>(handle: AcDbHandle): Promise<T | null> {
     this.assertOpen()
     return this.client.objectXdata<T>(this.documentHandle, handle)
@@ -454,6 +478,22 @@ export class AcDbEntity {
 
   async erase(): Promise<boolean> {
     return this.database.eraseEntity(this.handle)
+  }
+
+  async setReactors(reactorHandles: AcDbHandle[]): Promise<void> {
+    await this.database.setEntityReactors(this.handle, reactorHandles)
+  }
+
+  async setExtensionDictionaryEntry(
+    key: string,
+    targetHandle: AcDbHandle,
+    hardOwner = false
+  ): Promise<AcDbHandle> {
+    return this.database.setExtensionDictionaryEntry(this.handle, key, targetHandle, hardOwner)
+  }
+
+  async removeExtensionDictionaryEntry(key: string): Promise<boolean> {
+    return this.database.removeExtensionDictionaryEntry(this.handle, key)
   }
 
   async getXdata<T = unknown>(): Promise<T | null> {
