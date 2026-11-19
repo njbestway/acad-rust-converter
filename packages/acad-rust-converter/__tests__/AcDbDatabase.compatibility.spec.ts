@@ -32,6 +32,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       updateEntityCommon: jest.fn().mockResolvedValue(undefined),
       updateLineGeometry: jest.fn().mockResolvedValue(undefined),
       updateCircleArcGeometry: jest.fn().mockResolvedValue(undefined),
+      updateInsertPlacement: jest.fn().mockResolvedValue(undefined),
       addEntity: jest.fn().mockResolvedValue('2A'),
       addBlockRecord: jest.fn().mockResolvedValue({ name: 'NEW_BLOCK', handle: '40', blockEntityHandle: '41', blockEndHandle: '42' }),
       addEntityToBlock: jest.fn().mockResolvedValue('43'),
@@ -79,6 +80,20 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.updateCircleArcGeometry).toHaveBeenNthCalledWith(
       2, 7, '2A', { startAngle: 0.25, endAngle: 1.5 }
     )
+  })
+
+  it('updates INSERT placement without replacing block or attribute references', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    const patch = {
+      insertPoint: { x: 10, y: 20, z: 30 },
+      scale: [2, 3, 1] as [number, number, number],
+      rotation: 0.5
+    }
+
+    await entity.setInsertPlacement(patch)
+    expect(client.updateInsertPlacement).toHaveBeenCalledWith(7, '2A', patch)
   })
 
   it('patches common properties without replacing handle-bearing entity JSON', async () => {
