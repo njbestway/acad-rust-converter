@@ -35,6 +35,8 @@ export interface AcadRustDocumentClient {
   insertSequence(handle: number, insertHandle: string): Promise<AcadRustInsertSequence>
   /** Save and reopen in Rust, comparing entity/object/relationship fingerprints. */
   roundtripAudit(handle: number): Promise<AcadRustRoundtripAudit>
+  /** List opaque/custom OBJECTS while retaining their raw bytes inside Rust. */
+  opaqueObjectIndex(handle: number): Promise<AcadRustOpaqueObjectInfo[]>
   /** One bounded page of model-space entities. */
   entityPage(handle: number, offset: number, limit: number): Promise<AcadRustEntity[]>
   /** Exact hexadecimal handles aligned by index with entityPage(). */
@@ -154,6 +156,16 @@ export interface AcadRustRoundtripAudit {
   blockRepresentationsEqual: boolean
   beforeFingerprint: string
   afterFingerprint: string
+}
+
+export interface AcadRustOpaqueObjectInfo {
+  handle: string
+  intrinsicHandle: string
+  owner: string
+  typeName: string
+  rawBytesLength: number
+  rawBytesFingerprint: string | null
+  handleStreamBits: number
 }
 
 export interface AcadRustCreatedBlockRecord {
@@ -324,6 +336,11 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       section: kind
     })
     return this.parseJson<AcadRustExactHandlePath[]>(result, `section-handle-index:${kind}`)
+  }
+
+  async opaqueObjectIndex(handle: number): Promise<AcadRustOpaqueObjectInfo[]> {
+    const result = await this.request({ id: 0, kind: 'opaque-object-index', handle })
+    return this.parseJson<AcadRustOpaqueObjectInfo[]>(result, 'opaque-object-index')
   }
 
   async roundtripAudit(handle: number): Promise<AcadRustRoundtripAudit> {
