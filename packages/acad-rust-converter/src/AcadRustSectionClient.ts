@@ -81,6 +81,8 @@ export interface AcadRustDocumentClient {
   removeExtensionDictionaryEntry(handle: number, ownerHandle: string, key: string): Promise<boolean>
   /** Read one entity by its lossless hexadecimal DWG handle. */
   getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
+  /** Typed LWPOLYLINE geometry update; preserves common/reference fields. */
+  updateLwPolylineGeometry(handle: number, entityHandle: string, geometry: AcadRustLwPolylineGeometryPatch): Promise<void>
   /** Typed geometry update for LINE endpoints; leaves all reference fields untouched. */
   updateLineGeometry(handle: number, entityHandle: string, geometry: { start?: AcadRustPoint3d; end?: AcadRustPoint3d }): Promise<void>
   /** Typed CIRCLE/ARC geometry update; preserves all handle-bearing fields. */
@@ -193,6 +195,24 @@ export interface AcadRustExactHandlePath {
   path: string[]
   /** Exact uppercase hexadecimal DWG handle. */
   handle: string
+}
+
+export interface AcadRustLwPolylineVertex {
+  location: { x: number; y: number }
+  bulge: number
+  startWidth: number
+  endWidth: number
+  vertexId: number
+}
+
+export interface AcadRustLwPolylineGeometryPatch {
+  vertices?: AcadRustLwPolylineVertex[]
+  isClosed?: boolean
+  plinegen?: boolean
+  constantWidth?: number
+  elevation?: number
+  thickness?: number
+  normal?: AcadRustPoint3d
 }
 
 export interface AcadRustCircleArcGeometryPatch {
@@ -640,6 +660,14 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
   async getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity> {
     const result = await this.request({ id: 0, kind: 'get-entity', handle, entityHandle })
     return this.parseJson<AcadRustEntity>(result, 'entity')
+  }
+
+  async updateLwPolylineGeometry(handle: number, entityHandle: string, geometry: AcadRustLwPolylineGeometryPatch): Promise<void> {
+    await this.request({ id: 0, kind: 'update-lwpolyline', handle, entityHandle, geometryJson: JSON.stringify({
+      vertices: geometry.vertices?.map(v => ({ location: v.location, bulge: v.bulge, start_width: v.startWidth, end_width: v.endWidth, vertex_id: v.vertexId })),
+      is_closed: geometry.isClosed, plinegen: geometry.plinegen, constant_width: geometry.constantWidth,
+      elevation: geometry.elevation, thickness: geometry.thickness, normal: geometry.normal
+    }) })
   }
 
   async updateLineGeometry(
