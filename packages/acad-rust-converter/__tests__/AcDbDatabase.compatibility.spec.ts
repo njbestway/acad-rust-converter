@@ -14,8 +14,8 @@ describe('AcDbDatabase compatibility proxies', () => {
         linetype_scale: 1,
         invisible: false
       },
-      start: [0, 0, 0],
-      end: [10, 0, 0]
+      start: { x: 0, y: 0, z: 0 },
+      end: { x: 10, y: 0, z: 0 }
     }
   }
 
@@ -30,6 +30,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       blockEntitiesBatch: jest.fn(),
       getEntity: jest.fn().mockResolvedValue(line),
       updateEntityCommon: jest.fn().mockResolvedValue(undefined),
+      updateLineGeometry: jest.fn().mockResolvedValue(undefined),
       addEntity: jest.fn().mockResolvedValue('2A'),
       removeEntity: jest.fn().mockResolvedValue(true),
       save: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
@@ -67,6 +68,18 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.updateEntityCommon).toHaveBeenNthCalledWith(2, 7, '2A', { linetypeScale: 2.5 })
     expect(client.updateEntityCommon).toHaveBeenNthCalledWith(3, 7, '2A', { invisible: true })
     expect(events).toEqual(['objectModified', 'objectModified', 'objectModified'])
+  })
+
+  it('updates LINE endpoints through the typed geometry protocol', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    const start = { x: -5, y: 2, z: 0 }
+    const end = { x: 25, y: 2, z: 0 }
+
+    await entity.setLineEndpoints(start, end)
+
+    expect(client.updateLineGeometry).toHaveBeenCalledWith(7, '2A', { start, end })
   })
 
   it('routes append, erase, transactions and save to the same resident document', async () => {
