@@ -35,6 +35,7 @@ describe('AcDbDatabase compatibility proxies', () => {
       getEntity: jest.fn().mockResolvedValue(line),
       updateEntityCommon: jest.fn().mockResolvedValue(undefined),
       updateLineGeometry: jest.fn().mockResolvedValue(undefined),
+      updateLwPolylineGeometry: jest.fn().mockResolvedValue(undefined),
       updateCircleArcGeometry: jest.fn().mockResolvedValue(undefined),
       updateInsertPlacement: jest.fn().mockResolvedValue(undefined),
       updateInsertAttributeValue: jest.fn().mockResolvedValue(undefined),
@@ -172,6 +173,20 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.updateEntityCommon).toHaveBeenNthCalledWith(2, 7, '2A', { linetypeScale: 2.5 })
     expect(client.updateEntityCommon).toHaveBeenNthCalledWith(3, 7, '2A', { invisible: true })
     expect(events).toEqual(['objectModified', 'objectModified', 'objectModified'])
+  })
+
+  it('updates LWPOLYLINE vertices and metadata through the typed geometry protocol', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const patch = { vertices: [
+      { location: { x: 0, y: 0 }, bulge: 0.5, startWidth: 1, endWidth: 2, vertexId: 11 },
+      { location: { x: 20, y: 10 }, bulge: -0.25, startWidth: 2, endWidth: 3, vertexId: 12 }
+    ], isClosed: true, plinegen: true, constantWidth: 0, elevation: 5, thickness: 1, normal: { x: 0, y: 0, z: 1 } }
+    const events: string[] = []
+    db.on(event => events.push(event.type))
+    await db.getEntity('FFFFFFFFFFFFFFFF').setPolylineGeometry(patch)
+    expect(client.updateLwPolylineGeometry).toHaveBeenCalledWith(7, 'FFFFFFFFFFFFFFFF', patch)
+    expect(events).toEqual(['objectModified'])
   })
 
   it('updates LINE endpoints through the typed geometry protocol', async () => {
