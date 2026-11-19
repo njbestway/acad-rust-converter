@@ -162,6 +162,11 @@ export interface AcadRustRoundtripAudit {
   dgnLineStyleDefinitionsEqual: boolean
   dgnLineStyleComponentsEqual: boolean
   vxControlEntriesEqual: boolean
+  eedRecordsEqual: boolean
+  blockOwnedHandlesEqual: boolean
+  dataStoreHandlesEqual: boolean
+  acdsDataEqual: boolean
+  metadataEqual: boolean
   beforeFingerprint: string
   afterFingerprint: string
 }
