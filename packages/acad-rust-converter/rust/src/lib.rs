@@ -1064,6 +1064,12 @@ pub fn dwg_update_spline_geometry_json(
                 _ => return Err(JsValue::from_str("The target entity is not a SPLINE.")),
             };
 
+            let rational_flag_changed = patch.flags.as_ref().is_some_and(|f| f.rational.is_some());
+            let geometry_arrays_changed = patch.degree.is_some()
+                || patch.knots.is_some()
+                || patch.control_points.is_some()
+                || patch.weights.is_some()
+                || rational_flag_changed;
             let mut degree = spline.degree;
             let mut flags = spline.flags;
             let mut knots = spline.knots.clone();
@@ -1071,7 +1077,6 @@ pub fn dwg_update_spline_geometry_json(
             let mut weights = spline.weights.clone();
             let mut fit_points = spline.fit_points.clone();
             if let Some(value) = patch.degree { degree = value; }
-            let rational_flag_changed = patch.flags.as_ref().is_some_and(|f| f.rational.is_some());
             if let Some(update) = patch.flags {
                 if let Some(value) = update.closed { flags.closed = value; }
                 if let Some(value) = update.periodic { flags.periodic = value; }
@@ -1091,11 +1096,6 @@ pub fn dwg_update_spline_geometry_json(
             if !knots.windows(2).all(|pair| pair[0] <= pair[1]) {
                 return Err(JsValue::from_str("SPLINE knot values must be non-decreasing."));
             }
-            let geometry_arrays_changed = patch.degree.is_some()
-                || patch.knots.is_some()
-                || patch.control_points.is_some()
-                || patch.weights.is_some()
-                || rational_flag_changed;
             if geometry_arrays_changed && !control_points.is_empty() {
                 if !knots.is_empty() && knots.len() != control_points.len() + degree as usize + 1 {
                     return Err(JsValue::from_str("SPLINE knot count must equal control-point count + degree + 1."));
