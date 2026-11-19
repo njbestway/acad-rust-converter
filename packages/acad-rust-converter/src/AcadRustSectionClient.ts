@@ -89,6 +89,7 @@ export interface AcadRustDocumentClient {
   updateCircleArcGeometry(handle: number, entityHandle: string, geometry: AcadRustCircleArcGeometryPatch): Promise<void>
   /** Typed ELLIPSE geometry update; preserves common/reference fields. */
   updateEllipseGeometry(handle: number, entityHandle: string, geometry: AcadRustEllipseGeometryPatch): Promise<void>
+  updateDimensionBase(handle: number, entityHandle: string, patch: AcadRustDimensionBasePatch): Promise<void>
   updateTextGeometry(handle: number, entityHandle: string, geometry: AcadRustTextGeometryPatch): Promise<void>
   updateMTextGeometry(handle: number, entityHandle: string, geometry: AcadRustMTextGeometryPatch): Promise<void>
   /** Typed NURBS SPLINE update; preserves common/reference fields and DWG-only state. */
@@ -232,6 +233,20 @@ export interface AcadRustCircleArcGeometryPatch {
   radius?: number
   startAngle?: number
   endAngle?: number
+}
+
+export interface AcadRustDimensionBasePatch {
+  /** null clears the explicit text override and restores measured text. */
+  textOverride?: string | null
+  textMiddlePoint?: AcadRustPoint3d
+  textRotation?: number
+  horizontalDirection?: number
+  styleName?: string
+  lineSpacingFactor?: number
+  lineSpacingStyle?: 1 | 2
+  textUserPositioned?: boolean
+  flipArrow1?: boolean
+  flipArrow2?: boolean
 }
 
 export interface AcadRustTextGeometryPatch {
@@ -800,6 +815,16 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
         normal: geometry.normal
       })
     })
+  }
+
+  async updateDimensionBase(handle: number, entityHandle: string, patch: AcadRustDimensionBasePatch): Promise<void> {
+    await this.request({ id: 0, kind: 'update-dimension', handle, entityHandle, patchJson: JSON.stringify({
+      text_override: patch.textOverride, text_middle_point: patch.textMiddlePoint,
+      text_rotation: patch.textRotation, horizontal_direction: patch.horizontalDirection,
+      style_name: patch.styleName, line_spacing_factor: patch.lineSpacingFactor,
+      line_spacing_style: patch.lineSpacingStyle, text_user_positioned: patch.textUserPositioned,
+      flip_arrow1: patch.flipArrow1, flip_arrow2: patch.flipArrow2
+    }) })
   }
 
   async updateTextGeometry(handle: number, entityHandle: string, geometry: AcadRustTextGeometryPatch): Promise<void> {
