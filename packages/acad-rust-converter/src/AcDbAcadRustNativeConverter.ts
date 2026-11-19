@@ -1566,32 +1566,41 @@ function captureLoadedObjectIdentities(
  */
 function collectLoadedObjectsByHandle(db: AcDbDatabase): Map<string, AcDbObject> {
   const map = new Map<string, AcDbObject>()
-  const add = (obj: AcDbObject): void => {
+  const add = (candidate: unknown): void => {
+    if (candidate == null || typeof candidate !== 'object') return
     let id: string | undefined
     try {
-      id = obj.objectId
+      id = (candidate as AcDbObject).objectId
     } catch {
       id = undefined
     }
-    if (id) {
-      map.set(id, obj)
+    if (typeof id === 'string' && id.length > 0) {
+      map.set(id.toUpperCase(), candidate as AcDbObject)
     }
   }
+
   const objects = db.objects
   add(objects.dictionary)
-  for (const dict of [
-    objects.layout,
-    objects.group,
-    objects.sortentsTable,
-    objects.imageDefinition,
-    objects.mleaderStyle,
-    objects.mlineStyle,
-    objects.layerFilter,
-    objects.layerIndex,
-    objects.xrecord
-  ]) {
-    for (const [, obj] of dict.entries()) {
-      add(obj)
+
+  // Do not hard-code the currently known MLightCAD OBJECTS containers. New
+  // typed dictionaries (for example material/visual-style/plot-style records)
+  // should become identity-mappable automatically when the SDK adds them.
+  // Only values exposing a database ObjectId are retained; scalar metadata,
+  // Maps and unrelated helper objects are ignored.
+  const containers = objects as unknown as Record<string, unknown>
+  for (const value of Object.values(containers)) {
+    if (value == null || typeof value !== 'object') continue
+    const entries = (value as { entries?: unknown }).entries
+    if (typeof entries !== 'function') continue
+    try {
+      const iterator = (entries as () => Iterable<unknown>).call(value)
+      for (const entry of iterator) {
+        if (!Array.isArray(entry) || entry.length < 2) continue
+        add(entry[1])
+      }
+    } catch {
+      // A future collection may expose an entries-like method with a different
+      // contract. It must not abort drawing conversion or identity capture.
     }
   }
   return map
