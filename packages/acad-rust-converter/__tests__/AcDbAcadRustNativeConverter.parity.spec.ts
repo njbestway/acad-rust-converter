@@ -142,6 +142,20 @@ class FixtureClient implements AcadRustDocumentClient {
     return []
   }
 
+  async addBlockRecord(): Promise<any> {
+    return { name: 'TEST', handle: '10', blockEntityHandle: '11', blockEndHandle: '12' }
+  }
+
+  async addEntityToBlock(): Promise<string> { return '13' }
+  async removeEmptyBlockRecord(): Promise<boolean> { return true }
+  async objectXdata(): Promise<null> { return null }
+  async setObjectXdataRecord(): Promise<void> {}
+  async removeObjectXdataRecord(): Promise<boolean> { return false }
+  async ensureExtensionDictionary(): Promise<string> { return '14' }
+  async ensureXrecord(): Promise<string> { return '15' }
+  async xrecord(): Promise<null> { return null }
+  async setXrecordEntries(): Promise<void> {}
+
    async entityPage(_handle: number, offset: number): Promise<any[]> {
     // The offline dumper committed only the first model-space page; serving it
     // at offset 0 (and an empty page beyond) exercises the paging loop's
