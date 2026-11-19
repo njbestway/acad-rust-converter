@@ -59,6 +59,8 @@ export interface AcadRustDocumentClient {
   addEntityToBlock(handle: number, blockName: string, entityJson: string): Promise<string>
   /** Remove only an empty, unreferenced user block definition. */
   removeEmptyBlockRecord(handle: number, blockName: string): Promise<boolean>
+  /** Move an existing entity and atomically update Owner + block membership. */
+  moveEntityToBlock(handle: number, entityHandle: string, blockName: string): Promise<void>
   objectXdata<T = unknown>(handle: number, objectHandle: string): Promise<T | null>
   setObjectXdataRecord(handle: number, objectHandle: string, record: unknown): Promise<void>
   removeObjectXdataRecord(handle: number, objectHandle: string, application: string): Promise<boolean>
@@ -489,6 +491,20 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
     })
     if (result.entityHandle == null) throw new Error('acad-rust worker returned no block entity handle.')
     return result.entityHandle
+  }
+
+  async moveEntityToBlock(
+    handle: number,
+    entityHandle: string,
+    blockName: string
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'move-entity-to-block',
+      handle,
+      entityHandle,
+      block: blockName
+    })
   }
 
   async removeEmptyBlockRecord(handle: number, blockName: string): Promise<boolean> {
