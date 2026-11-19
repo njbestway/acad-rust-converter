@@ -12,6 +12,8 @@ import {
   type AcadRustCircleArcGeometryPatch,
   type AcadRustEllipseGeometryPatch,
   type AcadRustSplineGeometryPatch,
+  type AcadRustTextGeometryPatch,
+  type AcadRustMTextGeometryPatch,
   type AcadRustLwPolylineVertex,
   type AcadRustInsertPlacementPatch,
   type AcadRustDynamicBlockIndex,
@@ -27,7 +29,7 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
-export type AcDbEntityPatch = AcadRustLwPolylineGeometryPatch | AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustEllipseGeometryPatch | AcadRustSplineGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string } | { ownerBlockName: string }
+export type AcDbEntityPatch = AcadRustLwPolylineGeometryPatch | AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustEllipseGeometryPatch | AcadRustSplineGeometryPatch | AcadRustTextGeometryPatch | AcadRustMTextGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string } | { ownerBlockName: string }
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
@@ -360,6 +362,19 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
+  /** @internal TEXT and MTEXT proxy bridges. */
+  async patchTextGeometry(handle: AcDbHandle, geometry: AcadRustTextGeometryPatch): Promise<void> {
+    this.assertOpen()
+    await this.client.updateTextGeometry(this.documentHandle, handle, geometry)
+    this.emit({ type: 'objectModified', handle, entity: new AcDbEntity(this, handle), patch: geometry })
+  }
+
+  async patchMTextGeometry(handle: AcDbHandle, geometry: AcadRustMTextGeometryPatch): Promise<void> {
+    this.assertOpen()
+    await this.client.updateMTextGeometry(this.documentHandle, handle, geometry)
+    this.emit({ type: 'objectModified', handle, entity: new AcDbEntity(this, handle), patch: geometry })
+  }
+
   /** @internal SPLINE geometry proxy bridge. */
   async patchSplineGeometry(
     handle: AcDbHandle,
@@ -667,6 +682,16 @@ export class AcDbEntity {
 
   async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
     await this.database.patchLineGeometry(this.handle, { start, end })
+  }
+
+  async setTextGeometry(geometry: AcadRustTextGeometryPatch): Promise<void> {
+    if (await this.getClassName() !== 'Text') throw new Error(`Entity ${this.handle} is not TEXT.`)
+    await this.database.patchTextGeometry(this.handle, geometry)
+  }
+
+  async setMTextGeometry(geometry: AcadRustMTextGeometryPatch): Promise<void> {
+    if (await this.getClassName() !== 'MText') throw new Error(`Entity ${this.handle} is not MTEXT.`)
+    await this.database.patchMTextGeometry(this.handle, geometry)
   }
 
   async setSplineGeometry(geometry: AcadRustSplineGeometryPatch): Promise<void> {
