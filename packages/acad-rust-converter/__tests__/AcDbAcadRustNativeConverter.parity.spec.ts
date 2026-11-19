@@ -138,6 +138,10 @@ class FixtureClient implements AcadRustDocumentClient {
     return loadJson(`${kind}.json`) as T
   }
 
+   async sectionHandleIndex(_handle: number, _kind: AcadRustSectionKind): Promise<any[]> {
+    return []
+  }
+
    async entityPage(_handle: number, offset: number): Promise<any[]> {
     // The offline dumper committed only the first model-space page; serving it
     // at offset 0 (and an empty page beyond) exercises the paging loop's
