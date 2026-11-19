@@ -15,7 +15,7 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
-export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d }
+export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
@@ -148,6 +148,17 @@ export class AcDbDatabase {
     this.emit({ type: 'objectModified', handle, entity, patch: geometry })
   }
 
+  /** @internal CIRCLE/ARC geometry proxy bridge. */
+  async patchCircleArcGeometry(
+    handle: AcDbHandle,
+    geometry: AcadRustCircleArcGeometryPatch
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.updateCircleArcGeometry(this.documentHandle, handle, geometry)
+    const entity = new AcDbEntity(this, handle)
+    this.emit({ type: 'objectModified', handle, entity, patch: geometry })
+  }
+
   /** @internal Block-table proxy bridge. */
   async readBlockRecords(): Promise<AcadRustBlockRecordTable> {
     this.assertOpen()
@@ -222,6 +233,19 @@ export class AcDbEntity {
 
   async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
     await this.database.patchLineGeometry(this.handle, { start, end })
+  }
+
+  async setCircleGeometry(geometry: { center?: AcadRustPoint3d; radius?: number }): Promise<void> {
+    await this.database.patchCircleArcGeometry(this.handle, geometry)
+  }
+
+  async setArcGeometry(geometry: {
+    center?: AcadRustPoint3d
+    radius?: number
+    startAngle?: number
+    endAngle?: number
+  }): Promise<void> {
+    await this.database.patchCircleArcGeometry(this.handle, geometry)
   }
 
   async getLayer(): Promise<string> {
