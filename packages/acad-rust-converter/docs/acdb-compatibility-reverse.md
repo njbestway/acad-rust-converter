@@ -69,3 +69,38 @@ Jest cases cover empty-stack commit/abort rejection and retry after a failed wor
 The Rust/WASM API now exposes `dwg_entity_handle_page_json(handle, offset, limit)`, which returns a page-aligned array of uppercase hexadecimal entity handles directly from `CadDocument`. The worker and TypeScript client expose this as `entityHandlePage`. The native converter fetches this sidecar beside each model-space entity page, verifies equal lengths and valid hexadecimal values, and cross-checks the legacy numeric `common.handle` only when that number is a safe integer. Unsafe JS numbers are never converted back into claimed-exact handles.
 
 This is an additive bridge: existing entity JSON remains backward compatible for the rendering mapper, while a lossless identity channel is now available for future ObjectId binding. It does not yet replace every numeric handle in section JSON or automatically bind every newly created MLightCAD ObjectId. Rust/WASM regeneration and build/runtime verification are still required.
+
+
+## Extended implementation pass: identity, handles, blocks, INSERT and object metadata
+
+### Automatic mapped-entity identity capture
+
+The native converter accepts an optional `onObjectIdentity(objectId, dwgHandle)` callback. Every successfully mapped model-space or block-definition entity is appended first, then the database-generated MLightCAD ObjectId is paired with the exact hexadecimal DWG handle supplied by the Rust sidecar. Block batch and paged paths both validate exact-handle count/order before mapping. Unsupported entity variants are not assigned a fabricated identity.
+
+The callback is opt-in and does not create a second object store. Consumers can feed these pairs into `ObjectIdentityMap.bindMany` or their own identity index.
+
+### Section-wide exact-handle index
+
+The Rust/WASM API adds `dwg_section_handle_index_json`. For each supported section it serializes in Rust, extracts handle-like fields while they are still exact u64 values, and returns JSON-path + uppercase-hex pairs. `AcadRustDocumentClient.sectionHandleIndex` exposes the sidecar. The native converter can optionally request it for every mapped section through `onSectionHandleIndex`; this is opt-in to avoid the additional serialization/request cost when unused.
+
+This covers the supported section JSON trees, including OBJECTS and table records, but it is not a complete index of private non-Serde side maps or every possible reference field. The field-name matcher currently recognizes `handle`, `*_handle`, `owner`, `block_record`, `block_entity`, and `block_end`.
+
+### Block definition lifecycle
+
+The compatibility façade now supports block creation, member append, and guarded removal. Creation allocates a BLOCK-RECORD plus structural BLOCK and ENDBLK entities. Appending an ordinary entity sets its owner to the target block and delegates membership/index maintenance to `CadDocument::add_entity`. Removal is deliberately restricted to empty, unreferenced, non-layout user blocks; populated or INSERT-referenced blocks are rejected rather than leaving dangling references. Renaming and arbitrary member reordering are not yet exposed.
+
+### INSERT and attributes
+
+Typed INSERT placement patches support insertion point, XYZ scale, rotation, and extrusion normal without replacing block or ATTRIB handles. Single-line ATTRIB value changes preserve its handle, owner and ATTDEF link. ATTDEF default-value changes are separate and do not rewrite existing INSERT attribute instances. Multiline ATTRIB updates are refused until the embedded MTEXT payload can be updated atomically.
+
+### XData, Extension Dictionary, XRecord, Reactor and dictionary references
+
+The façade now exposes XDATA read/upsert/remove, Extension Dictionary creation, named XRecord creation/read/entry replacement, reactor-list replacement, and Extension Dictionary key upsert/removal. Handles cross these APIs as hexadecimal strings. XDATA upsert preserves other applications' records and registers a missing APPID. Reactor and dictionary target handles are validated against resident entities, tables, or OBJECTS; dictionary entries can declare hard-owner semantics. XRecord entry replacement is explicit and resets the stale serialized object-reference stream so references are rebuilt from typed entries.
+
+### Remaining safety boundary
+
+- There is no general Owner reassignment API: changing Owner requires moving the entity between block membership lists and updating related INSERT/attribute semantics.
+- There is no generic Reactor reverse-link maintenance; this API replaces the owning entity's reactor list only.
+- Block rename, moving entities between blocks, non-empty block deletion, dynamic-block graph editing, and multiline ATTRIB/MTEXT atomic editing remain pending.
+- Section handle indexes do not yet replace the legacy numeric handle fields in the renderer JSON. They provide a separate lossless channel for consumers that need to preserve identities/references.
+- Rust/WASM compilation, TypeScript build, Jest execution, native DWG save/reopen, AutoCAD open and AUDIT remain required. None is claimed as passed in this branch update.
