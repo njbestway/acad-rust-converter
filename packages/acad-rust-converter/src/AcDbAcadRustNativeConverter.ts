@@ -1547,13 +1547,17 @@ function captureLoadedObjectIdentities(
 ): void {
   if (!handleIndex || !onIdentity) return
   const loaded = collectLoadedObjectsByHandle(db)
+  const boundHandles = new Set<string>()
   for (const item of handleIndex) {
     if (item.path[item.path.length - 1] !== 'handle') continue
-    const object = loaded.get(item.handle)
+    const handle = item.handle.toUpperCase()
+    if (boundHandles.has(handle)) continue
+    const object = loaded.get(handle)
     if (!object) continue
     const objectId = object.objectId
     if (typeof objectId === 'string' && objectId.length > 0) {
-      onIdentity(objectId, item.handle)
+      onIdentity(objectId, handle)
+      boundHandles.add(handle)
     }
   }
 }
