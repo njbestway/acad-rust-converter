@@ -1481,3 +1481,40 @@ pub fn dwg_save(handle: u32) -> Result<Vec<u8>, JsValue> {
         DwgWriter::write_to_vec(doc).map_err(to_js("acadrust DWG write failed"))
     }))
 }
+
+
+#[cfg(test)]
+mod exact_handle_index_tests {
+    use super::{collect_exact_handles, ExactHandlePath};
+
+    #[test]
+    fn indexes_scalar_array_and_dictionary_handle_references_without_touching_geometry() {
+        let value = serde_json::json!({
+            "handle": 18446744073709551614u64,
+            "owner": 7u64,
+            "reactors": [8u64, 9u64],
+            "entities": [10u64, 11u64],
+            "object_references": [12u64],
+            "entries": [["ACAD_LAYOUT", 13u64], ["ACAD_GROUP", 14u64]],
+            "points": [1.0, 2.0, 3.0],
+            "xdata": [{"code": 1000, "value": "not a handle"}]
+        });
+        let mut paths = Vec::new();
+        let mut output: Vec<ExactHandlePath> = Vec::new();
+        collect_exact_handles(&value, &mut paths, &mut output);
+
+        let indexed: std::collections::HashSet<(String, String)> = output
+            .into_iter()
+            .map(|item| (item.path.join("/"), item.handle))
+            .collect();
+        assert!(indexed.contains(&("handle".into(), "FFFFFFFFFFFFFFFE".into())));
+        assert!(indexed.contains(&("owner".into(), "7".into())));
+        assert!(indexed.contains(&("reactors/0".into(), "8".into())));
+        assert!(indexed.contains(&("reactors/1".into(), "9".into())));
+        assert!(indexed.contains(&("entities/0".into(), "A".into())));
+        assert!(indexed.contains(&("object_references/0".into(), "C".into())));
+        assert!(indexed.contains(&("entries/0/1".into(), "D".into())));
+        assert!(indexed.contains(&("entries/1/1".into(), "E".into())));
+        assert!(!indexed.iter().any(|(path, _)| path.starts_with("points/")));
+    }
+}
