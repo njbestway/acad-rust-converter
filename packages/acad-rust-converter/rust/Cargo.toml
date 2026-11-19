@@ -31,12 +31,10 @@ dumper = ["dep:anyhow"]
 # because its memmap2/rayon dependencies are gated behind
 # cfg(not(target_arch = "wasm32")).
 #
-# 0.6.6 carries the ACIS REGION framing fix that was broken in the published
-# 0.6.5 (miscounted bits inside REGION records aborted dwg_open on valid
-# drawings such as samples/高山.dwg). This supersedes the earlier local-path
-# workaround that pointed at an uncommitted acadrust checkout; the crate now
-# resolves from crates.io so clones and CI build reproducibly.
-acadrust = { version = "0.6.6", features = ["serde"] }
+# 0.6.8 fixes DWG dimension measurement units and preserves dimension
+# style/linetype names and current drawing styles on DWG writes. It also
+# includes the ACIS REGION framing fix from 0.6.6.
+acadrust = { version = "0.6.8", features = ["serde"] }
 # Needed directly (not just transitively via `acadrust`'s `serde` feature) to
 # name the `serde::Serialize` trait bound in `to_json`'s generic signature;
 # `derive` lets the batched-block reply serialize a plain struct instead of an
