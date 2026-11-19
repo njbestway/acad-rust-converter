@@ -2424,12 +2424,82 @@ pub fn dwg_roundtrip_audit_json(handle: u32) -> Result<String, JsValue> {
 }
 
 #[wasm_bindgen]
+/// Synchronize cached DIMENSION measurements before serialization. The DWG
+/// writer persists DimensionBase.actual_measurement for most subtypes; stale
+/// cache values can otherwise survive even though subtype geometry is authoritative.
+fn refresh_dimension_measurement_cache(doc: &mut CadDocument) -> Result<(), JsValue> {
+    let updates: Vec<_> = doc.entities().filter_map(|entity| {
+        if let acadrust::EntityType::Dimension(dimension) = entity {
+            let measurement = dimension.measurement();
+            if !measurement.is_finite() {
+                return Some(Err(JsValue::from_str(
+                    "Cannot save DIMENSION with a non-finite geometry measurement."
+                )));
+            }
+            let cached = dimension.base().actual_measurement;
+            let tolerance = 1.0e-12_f64.max(measurement.abs() * 1.0e-12);
+            if !cached.is_finite() || (cached - measurement).abs() > tolerance {
+                return Some(Ok((dimension.base().common.handle, measurement)));
+            }
+        }
+        None
+    }).collect::<Result<Vec<_>, _>>()?;
+
+    for (entity_handle, measurement) in updates {
+        if let Some(acadrust::EntityType::Dimension(dimension)) = doc.get_entity_mut(entity_handle) {
+            dimension.base_mut().actual_measurement = measurement;
+        }
+    }
+    Ok(())
+}
+
+#[wasm_bindgen]
 pub fn dwg_save(handle: u32) -> Result<Vec<u8>, JsValue> {
-    guard(|| with_document(handle, |doc| {
+    guard(|| with_document_mut(handle, |doc| {
+        refresh_dimension_measurement_cache(doc)?;
         DwgWriter::write_to_vec(doc).map_err(to_js("acadrust DWG write failed"))
     }))
 }
 
+
+#[cfg(test)]
+mod dimension_measurement_cache_tests {
+    use super::*;
+    use acadrust::entities::dimension::{Dimension, DimensionLinear};
+
+    #[test]
+    fn save_preparation_refreshes_stale_dimension_measurement_cache() {
+        let mut document = CadDocument::new();
+        let mut dimension = DimensionLinear::new(
+            acadrust::types::Vector3::new(0.0, 0.0, 0.0),
+            acadrust::types::Vector3::new(30.0, 40.0, 0.0),
+        );
+        dimension.base.actual_measurement = 999.0;
+        let entity_handle = dimension.base.common.handle;
+        document.add_entity(acadrust::EntityType::Dimension(Dimension::Linear(dimension))).unwrap();
+
+        refresh_dimension_measurement_cache(&mut document).unwrap();
+
+        let saved = document.get_entity(entity_handle).unwrap();
+        let acadrust::EntityType::Dimension(Dimension::Linear(saved)) = saved else {
+            panic!("expected linear dimension");
+        };
+        assert!((saved.base.actual_measurement - 50.0).abs() < 1.0e-9);
+    }
+
+    #[test]
+    fn save_preparation_rejects_non_finite_dimension_measurements() {
+        let mut document = CadDocument::new();
+        let mut dimension = DimensionLinear::new(
+            acadrust::types::Vector3::new(0.0, 0.0, 0.0),
+            acadrust::types::Vector3::new(1.0, 0.0, 0.0),
+        );
+        dimension.first_point.x = f64::NAN;
+        document.add_entity(acadrust::EntityType::Dimension(Dimension::Linear(dimension))).unwrap();
+
+        assert!(refresh_dimension_measurement_cache(&mut document).is_err());
+    }
+}
 
 #[cfg(test)]
 mod exact_handle_index_tests {
