@@ -27,6 +27,8 @@ export interface AcadRustDocumentClient {
   meta(handle: number): Promise<AcadRustMeta>
   /** One document section, parsed from serde JSON into `T`. */
   section<T>(handle: number, kind: AcadRustSectionKind): Promise<T>
+  /** Exact u64 handle fields and their JSON paths for a section. */
+  sectionHandleIndex(handle: number, kind: AcadRustSectionKind): Promise<AcadRustExactHandlePath[]>
   /** One bounded page of model-space entities. */
   entityPage(handle: number, offset: number, limit: number): Promise<AcadRustEntity[]>
   /** Exact hexadecimal handles aligned by index with entityPage(). */
@@ -69,6 +71,13 @@ export interface AcadRustDocumentClient {
   close(handle: number): Promise<void>
   /** Tear down any transport (worker) resources; safe to call more than once. */
   dispose(): void
+}
+
+export interface AcadRustExactHandlePath {
+  /** JSON path segments; array indexes are decimal strings. */
+  path: string[]
+  /** Exact uppercase hexadecimal DWG handle. */
+  handle: string
 }
 
 export interface AcadRustCircleArcGeometryPatch {
@@ -205,6 +214,19 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
     }
     const result = await this.request({ id: 0, kind: 'section', handle, section: kind })
     return this.parseJson<T>(result, `section:${kind}`)
+  }
+
+  async sectionHandleIndex(
+    handle: number,
+    kind: AcadRustSectionKind
+  ): Promise<AcadRustExactHandlePath[]> {
+    const result = await this.request({
+      id: 0,
+      kind: 'section-handle-index',
+      handle,
+      section: kind
+    })
+    return this.parseJson<AcadRustExactHandlePath[]>(result, `section-handle-index:${kind}`)
   }
 
   async entityPage(
