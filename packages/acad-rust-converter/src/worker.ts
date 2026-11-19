@@ -63,6 +63,7 @@ import {
   dwg_meta,
   dwg_open,
   dwg_section_json,
+  dwg_section_handle_index_json,
   dwg_save,
   dwg_remove_entity,
   dwg_to_dxf,
@@ -90,6 +91,7 @@ type WorkerRequest =
   | { id: number; kind: 'dxf-open'; data: ArrayBuffer }
   | { id: number; kind: 'meta'; handle: number }
   | { id: number; kind: 'section'; handle: number; section: string }
+  | { id: number; kind: 'section-handle-index'; handle: number; section: string }
   | { id: number; kind: 'page'; handle: number; offset: number; limit: number }
   | { id: number; kind: 'entity-handles-page'; handle: number; offset: number; limit: number }
   | {
@@ -283,6 +285,13 @@ ctx.addEventListener('message', (event: MessageEvent) => {
           })
           break
         }
+        case 'section-handle-index':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_section_handle_index_json(handle, request.section)
+          })
+          break
         case 'page':
           ctx.postMessage({
             type: 'result',
