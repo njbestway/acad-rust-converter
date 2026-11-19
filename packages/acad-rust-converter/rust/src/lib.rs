@@ -1814,9 +1814,9 @@ fn document_roundtrip_fingerprint(doc: &CadDocument) -> Result<serde_json::Value
     });
 
     let metadata = serde_json::json!({
-        "version": serde_json::to_value(doc.version).map_err(to_js("round-trip version snapshot failed"))?,
+        "version": serde_json::to_value(&doc.version).map_err(to_js("round-trip version snapshot failed"))?,
         "maintenanceVersion": doc.maintenance_version,
-        "dwgSourceVersion": serde_json::to_value(doc.dwg_source_version).map_err(to_js("round-trip DWG source version snapshot failed"))?,
+        "dwgSourceVersion": serde_json::to_value(&doc.dwg_source_version).map_err(to_js("round-trip DWG source version snapshot failed"))?,
         "header": serde_json::to_value(&doc.header).map_err(to_js("round-trip header snapshot failed"))?,
         "summaryInfo": serde_json::to_value(&doc.summary_info).map_err(to_js("round-trip summary info snapshot failed"))?,
         "classes": serde_json::to_value(&doc.classes).map_err(to_js("round-trip classes snapshot failed"))?
