@@ -189,6 +189,19 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(events).toEqual(['objectModified'])
   })
 
+  it('supports indexed LWPOLYLINE vertex edits without coercing entity handles to numbers', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('FFFFFFFFFFFFFFFF')
+    const vertex = { location: { x: 3, y: 4 }, bulge: 0.75, startWidth: 2, endWidth: 4, vertexId: 99 }
+    await entity.insertPolylineVertex(1, vertex)
+    await entity.updatePolylineVertex(2, vertex)
+    await entity.removePolylineVertex(0)
+    expect(client.updateLwPolylineGeometry).toHaveBeenNthCalledWith(1, 7, 'FFFFFFFFFFFFFFFF', { vertexOperations: [{ op: 'insert', index: 1, vertex }] })
+    expect(client.updateLwPolylineGeometry).toHaveBeenNthCalledWith(2, 7, 'FFFFFFFFFFFFFFFF', { vertexOperations: [{ op: 'update', index: 2, vertex }] })
+    expect(client.updateLwPolylineGeometry).toHaveBeenNthCalledWith(3, 7, 'FFFFFFFFFFFFFFFF', { vertexOperations: [{ op: 'remove', index: 0 }] })
+  })
+
   it('updates LINE endpoints through the typed geometry protocol', async () => {
     const client = createClient()
     const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
