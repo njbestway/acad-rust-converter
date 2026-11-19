@@ -859,6 +859,70 @@ pub fn dwg_add_entity_to_block_json(
     }))
 }
 
+/// Move an existing ordinary entity to another block definition while
+/// preserving its DWG handle, XDATA, reactors, Extension Dictionary and all
+/// entity-specific references. Both block membership lists and common owner
+/// are updated together in the resident CadDocument.
+#[wasm_bindgen]
+pub fn dwg_move_entity_to_block(
+    handle: u32,
+    entity_handle_hex: &str,
+    target_block_name: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        with_document_mut(handle, |doc| {
+            let target = doc.block_records.get(target_block_name)
+                .ok_or_else(|| JsValue::from_str("Target block does not exist."))?;
+            let target_handle = target.handle;
+            let target_is_model = target.is_model_space();
+            let target_is_paper = target.is_paper_space();
+            let current = doc.get_entity(entity_handle)
+                .ok_or_else(|| JsValue::from_str("Entity handle was not found."))?;
+            if matches!(
+                current,
+                acadrust::EntityType::AttributeEntity(_)
+                    | acadrust::EntityType::Block(_)
+                    | acadrust::EntityType::BlockEnd(_)
+                    | acadrust::EntityType::Seqend(_)
+            ) {
+                return Err(JsValue::from_str("Sub-entities and structural block markers cannot be moved independently."));
+            }
+            let old_owner = current.common().owner_handle;
+            if old_owner == target_handle {
+                return Ok(());
+            }
+            let old_record_exists = doc.block_records.iter().any(|record| record.handle == old_owner);
+            if !old_owner.is_null() && !old_record_exists {
+                return Err(JsValue::from_str("Current entity owner does not resolve to a block record."));
+            }
+            if let Some(old_record) = doc.block_records.iter_mut().find(|record| record.handle == old_owner) {
+                let before = old_record.entity_handles.len();
+                old_record.entity_handles.retain(|member| *member != entity_handle);
+                if old_record.entity_handles.len() == before {
+                    return Err(JsValue::from_str("Current block membership does not contain the entity handle."));
+                }
+            }
+            if let Some(new_record) = doc.block_records.iter_mut().find(|record| record.handle == target_handle) {
+                if !new_record.entity_handles.contains(&entity_handle) {
+                    new_record.entity_handles.push(entity_handle);
+                }
+            }
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("Entity disappeared during owner reassignment."))?;
+            entity.common_mut().owner_handle = target_handle;
+            entity.common_mut().entity_mode = if target_is_model {
+                Some(2)
+            } else if target_is_paper {
+                Some(1)
+            } else {
+                None
+            };
+            Ok(())
+        })
+    })
+}
+
 /// Delete only an empty, unreferenced user block. Refuse destructive deletion
 /// when child entities or INSERT references remain; callers must explicitly
 /// remove/repoint those objects first.
