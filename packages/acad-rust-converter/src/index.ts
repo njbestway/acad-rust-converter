@@ -30,6 +30,8 @@ export {
 export {
   AcDbDatabase,
   AcDbEntity,
+  AcDbBlockTable,
+  AcDbBlockTableRecord,
   type AcDbHandle,
   type AcDbDatabaseEvent,
   type AcDbDatabaseListener
