@@ -721,6 +721,7 @@ struct Point2Patch { x: f64, y: f64 }
 #[derive(serde::Deserialize)]
 struct LwPolylineVertexPatch { location: Point2Patch, bulge: f64, start_width: f64, end_width: f64, vertex_id: i32 }
 #[derive(serde::Deserialize)]
+#[serde(tag = "op", rename_all = "camelCase")]
 enum LwPolylineVertexOperation {
     Insert { index: usize, vertex: LwPolylineVertexPatch },
     Update { index: usize, vertex: LwPolylineVertexPatch },
@@ -769,29 +770,30 @@ pub fn dwg_update_lwpolyline_geometry_json(handle: u32, entity_handle_hex: &str,
             let entity = doc.get_entity_mut(entity_handle).ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
             match entity {
                 acadrust::EntityType::LwPolyline(polyline) => {
-                    if let Some(vertices) = patch.vertices { polyline.vertices = vertices.into_iter().map(|v| acadrust::entities::LwVertex {
+                    let mut vertices = patch.vertices.map(|values| values.into_iter().map(|v| acadrust::entities::LwVertex {
                         location: acadrust::types::Vector2::new(v.location.x, v.location.y), bulge: v.bulge,
                         start_width: v.start_width, end_width: v.end_width, vertex_id: v.vertex_id,
-                    }).collect(); }
+                    }).collect()).unwrap_or_else(|| polyline.vertices.clone());
                     if let Some(operations) = patch.vertex_operations {
                         for operation in operations {
                             match operation {
                                 LwPolylineVertexOperation::Insert { index, vertex } => {
-                                    if index > polyline.vertices.len() { return Err(JsValue::from_str("LWPOLYLINE insert index is out of range.")); }
-                                    polyline.vertices.insert(index, acadrust::entities::LwVertex { location: acadrust::types::Vector2::new(vertex.location.x, vertex.location.y), bulge: vertex.bulge, start_width: vertex.start_width, end_width: vertex.end_width, vertex_id: vertex.vertex_id });
+                                    if index > vertices.len() { return Err(JsValue::from_str("LWPOLYLINE insert index is out of range.")); }
+                                    vertices.insert(index, acadrust::entities::LwVertex { location: acadrust::types::Vector2::new(vertex.location.x, vertex.location.y), bulge: vertex.bulge, start_width: vertex.start_width, end_width: vertex.end_width, vertex_id: vertex.vertex_id });
                                 }
                                 LwPolylineVertexOperation::Update { index, vertex } => {
-                                    let target = polyline.vertices.get_mut(index).ok_or_else(|| JsValue::from_str("LWPOLYLINE update index is out of range."))?;
+                                    let target = vertices.get_mut(index).ok_or_else(|| JsValue::from_str("LWPOLYLINE update index is out of range."))?;
                                     target.location = acadrust::types::Vector2::new(vertex.location.x, vertex.location.y);
                                     target.bulge = vertex.bulge; target.start_width = vertex.start_width; target.end_width = vertex.end_width; target.vertex_id = vertex.vertex_id;
                                 }
                                 LwPolylineVertexOperation::Remove { index } => {
-                                    if index >= polyline.vertices.len() { return Err(JsValue::from_str("LWPOLYLINE remove index is out of range.")); }
-                                    polyline.vertices.remove(index);
+                                    if index >= vertices.len() { return Err(JsValue::from_str("LWPOLYLINE remove index is out of range.")); }
+                                    vertices.remove(index);
                                 }
                             }
                         }
                     }
+                    if patch.vertices.is_some() || patch.vertex_operations.is_some() { polyline.vertices = vertices; }
                     if let Some(v) = patch.is_closed { polyline.is_closed = v; }
                     if let Some(v) = patch.plinegen { polyline.plinegen = v; }
                     if let Some(v) = patch.constant_width { polyline.constant_width = v; }
