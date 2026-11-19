@@ -154,6 +154,14 @@ export interface AcadRustRoundtripAudit {
   objectXdataEqual: boolean
   dynamicVisibilityEqual: boolean
   blockRepresentationsEqual: boolean
+  tablesEqual: boolean
+  extensionDictionaryLinksEqual: boolean
+  reactorLinksEqual: boolean
+  contextScalesEqual: boolean
+  fieldDefinitionsEqual: boolean
+  dgnLineStyleDefinitionsEqual: boolean
+  dgnLineStyleComponentsEqual: boolean
+  vxControlEntriesEqual: boolean
   beforeFingerprint: string
   afterFingerprint: string
 }
