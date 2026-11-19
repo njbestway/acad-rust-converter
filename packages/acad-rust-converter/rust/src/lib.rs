@@ -370,6 +370,20 @@ pub fn dwg_block_entity_page(
     })
 }
 
+/// Return exact hexadecimal handles for the entities owned by one block record.
+#[wasm_bindgen]
+pub fn dwg_block_entity_handles_json(
+    handle: u32,
+    block_name: &str,
+) -> Result<String, JsValue> {
+    guard(|| with_document(handle, |doc| {
+        let handles: Vec<String> = doc.entities_in_block(block_name)
+            .map(|entity| format!("{:X}", entity.common().handle.value()))
+            .collect();
+        to_json("acadrust block entity handles serialize failed", &handles)
+    }))
+}
+
 /// One block's complete entity list inside a [`dwg_block_entities_batch`]
 /// reply. Serialized directly (no `serde_json::Value` intermediate) so the
 /// batched path keeps the same per-entity encode cost as the paged one.
