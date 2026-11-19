@@ -535,6 +535,55 @@ struct EntityCommonPatch {
     invisible: Option<bool>,
 }
 
+#[derive(serde::Deserialize)]
+struct Point3Patch {
+    x: f64,
+    y: f64,
+    z: f64,
+}
+
+#[derive(serde::Deserialize)]
+struct LineGeometryPatch {
+    start: Option<Point3Patch>,
+    end: Option<Point3Patch>,
+}
+
+/// Update LINE endpoints without serializing or replacing its handle-bearing
+/// common/reference fields. This is the first typed geometry mutation.
+#[wasm_bindgen]
+pub fn dwg_update_line_geometry_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    geometry_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: LineGeometryPatch = serde_json::from_str(geometry_json)
+            .map_err(to_js("line geometry patch JSON parse failed"))?;
+        for point in [&patch.start, &patch.end].into_iter().flatten() {
+            if !point.x.is_finite() || !point.y.is_finite() || !point.z.is_finite() {
+                return Err(JsValue::from_str("LINE coordinates must all be finite."));
+            }
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            match entity {
+                acadrust::EntityType::Line(line) => {
+                    if let Some(point) = patch.start {
+                        line.start = acadrust::types::Vector3::new(point.x, point.y, point.z);
+                    }
+                    if let Some(point) = patch.end {
+                        line.end = acadrust::types::Vector3::new(point.x, point.y, point.z);
+                    }
+                    Ok(())
+                }
+                _ => Err(JsValue::from_str("The target entity is not a LINE.")),
+            }
+        })
+    })
+}
+
 /// Update only reference-safe common properties. Geometry and handle-bearing
 /// fields are deliberately excluded from this patch protocol so JS number
 /// precision cannot corrupt embedded u64 references.
