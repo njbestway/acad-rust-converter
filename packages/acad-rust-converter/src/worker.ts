@@ -49,11 +49,17 @@
 import {
   dwg_block_entities_batch,
   dwg_block_entity_page,
+  dwg_add_entity_json,
+  dwg_abort_transaction,
+  dwg_begin_transaction,
+  dwg_commit_transaction,
   dwg_close,
   dwg_entity_page,
   dwg_meta,
   dwg_open,
   dwg_section_json,
+  dwg_save,
+  dwg_remove_entity,
   dwg_to_dxf,
   dxf_open,
   dxf_to_dxf,
@@ -90,12 +96,20 @@ type WorkerRequest =
     }
   | { id: number; kind: 'block-batch'; handle: number; names: string }
   | { id: number; kind: 'close'; handle: number }
+  | { id: number; kind: 'begin-transaction' | 'commit-transaction' | 'abort-transaction'; handle: number }
+  | { id: number; kind: 'add-entity'; handle: number; entityJson: string }
+  | { id: number; kind: 'remove-entity'; handle: number; entityHandle: string }
+  | { id: number; kind: 'save'; handle: number }
 
 interface WorkerResult {
   type: 'result'
   id: number
   dxf?: ArrayBuffer
+  dwg?: ArrayBuffer
+  json?: string
   handle?: number
+  entityHandle?: string
+  removed?: boolean
   json?: string
   /** `open` only: wall time of the wasm `dwg_open` read, measured in-worker. */
   parseMs?: number
@@ -286,6 +300,33 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             json: dwg_block_entities_batch(handle, request.names)
           })
           break
+        case 'begin-transaction':
+          dwg_begin_transaction(handle)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'commit-transaction':
+          dwg_commit_transaction(handle)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'abort-transaction':
+          dwg_abort_transaction(handle)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'add-entity': {
+          const entityHandle = dwg_add_entity_json(handle, request.entityJson)
+          ctx.postMessage({ type: 'result', id, entityHandle })
+          break
+        }
+        case 'remove-entity': {
+          const removed = dwg_remove_entity(handle, request.entityHandle)
+          ctx.postMessage({ type: 'result', id, removed })
+          break
+        }
+        case 'save': {
+          const dwg = toExactBuffer(dwg_save(handle))
+          ctx.postMessage({ type: 'result', id, dwg }, [dwg])
+          break
+        }
         case 'close':
           dwg_close(handle)
           ctx.postMessage({ type: 'result', id })
