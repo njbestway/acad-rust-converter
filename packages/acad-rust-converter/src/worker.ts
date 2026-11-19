@@ -54,6 +54,13 @@ import {
   dwg_add_block_record_json,
   dwg_add_entity_to_block_json,
   dwg_remove_empty_block_record,
+  dwg_object_xdata_json,
+  dwg_set_object_xdata_record_json,
+  dwg_remove_object_xdata_record,
+  dwg_ensure_extension_dictionary,
+  dwg_ensure_xrecord,
+  dwg_xrecord_json,
+  dwg_set_xrecord_entries_json,
   dwg_abort_transaction,
   dwg_begin_transaction,
   dwg_commit_transaction,
@@ -100,6 +107,13 @@ type WorkerRequest =
   | { id: number; kind: 'add-block-record'; handle: number; name: string; basePoint: string; description: string }
   | { id: number; kind: 'add-block-entity'; handle: number; block: string; entity: string }
   | { id: number; kind: 'remove-empty-block'; handle: number; block: string }
+  | { id: number; kind: 'object-xdata'; handle: number; objectHandle: string }
+  | { id: number; kind: 'set-object-xdata'; handle: number; objectHandle: string; record: string }
+  | { id: number; kind: 'remove-object-xdata'; handle: number; objectHandle: string; application: string }
+  | { id: number; kind: 'ensure-extension-dictionary'; handle: number; ownerHandle: string }
+  | { id: number; kind: 'ensure-xrecord'; handle: number; ownerHandle: string; key: string }
+  | { id: number; kind: 'read-xrecord'; handle: number; ownerHandle: string; key: string }
+  | { id: number; kind: 'set-xrecord-entries'; handle: number; ownerHandle: string; key: string; entries: string }
   | {
       id: number
       kind: 'block-page'
@@ -304,6 +318,49 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             id,
             json: dwg_entity_page(handle, request.offset, request.limit)
           })
+          break
+        case 'object-xdata':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_object_xdata_json(handle, request.objectHandle)
+          })
+          break
+        case 'set-object-xdata':
+          dwg_set_object_xdata_record_json(handle, request.objectHandle, request.record)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'remove-object-xdata':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            removed: dwg_remove_object_xdata_record(handle, request.objectHandle, request.application)
+          })
+          break
+        case 'ensure-extension-dictionary':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            entityHandle: dwg_ensure_extension_dictionary(handle, request.ownerHandle)
+          })
+          break
+        case 'ensure-xrecord':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            entityHandle: dwg_ensure_xrecord(handle, request.ownerHandle, request.key)
+          })
+          break
+        case 'read-xrecord':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_xrecord_json(handle, request.ownerHandle, request.key)
+          })
+          break
+        case 'set-xrecord-entries':
+          dwg_set_xrecord_entries_json(handle, request.ownerHandle, request.key, request.entries)
+          ctx.postMessage({ type: 'result', id })
           break
         case 'add-block-record':
           ctx.postMessage({
