@@ -1702,6 +1702,81 @@ fn document_roundtrip_fingerprint(doc: &CadDocument) -> Result<serde_json::Value
     }
     representations.sort_by(|a, b| a[0].as_str().cmp(&b[0].as_str()));
 
+    // Table records and document-level relationship side maps are part of
+    // the DWG object graph too. Comparing only drawable entities can miss a
+    // broken layer/style table, extension-dictionary pointer or reactor edge.
+    let tables = serde_json::json!({
+        "layers": serde_json::to_value(&doc.layers).map_err(to_js("round-trip layer table snapshot failed"))?,
+        "lineTypes": serde_json::to_value(&doc.line_types).map_err(to_js("round-trip linetype table snapshot failed"))?,
+        "textStyles": serde_json::to_value(&doc.text_styles).map_err(to_js("round-trip text style table snapshot failed"))?,
+        "dimStyles": serde_json::to_value(&doc.dim_styles).map_err(to_js("round-trip dimstyle table snapshot failed"))?,
+        "appIds": serde_json::to_value(&doc.app_ids).map_err(to_js("round-trip APPID table snapshot failed"))?,
+        "views": serde_json::to_value(&doc.views).map_err(to_js("round-trip VIEW table snapshot failed"))?,
+        "vports": serde_json::to_value(&doc.vports).map_err(to_js("round-trip VPORT table snapshot failed"))?,
+        "ucss": serde_json::to_value(&doc.ucss).map_err(to_js("round-trip UCS table snapshot failed"))?,
+        "vxTable": serde_json::to_value(&doc.vx_table).map_err(to_js("round-trip VX table snapshot failed"))?
+    });
+
+    let mut extension_dictionary_links = Vec::new();
+    for (owner, dictionary) in &doc.xdic_by_handle {
+        extension_dictionary_links.push(serde_json::json!([
+            format!("{:X}", owner.value()),
+            format!("{:X}", dictionary.value())
+        ]));
+    }
+    extension_dictionary_links.sort_by(|a, b| a[0].as_str().cmp(&b[0].as_str()));
+
+    let mut reactor_links = Vec::new();
+    for (owner, reactors) in &doc.reactors_by_handle {
+        reactor_links.push(serde_json::json!({
+            "owner": format!("{:X}", owner.value()),
+            "reactors": reactors.iter().map(|h| format!("{:X}", h.value())).collect::<Vec<_>>()
+        }));
+    }
+    reactor_links.sort_by(|a, b| a["owner"].as_str().cmp(&b["owner"].as_str()));
+
+    let mut context_scales = Vec::new();
+    for (context, scale) in &doc.context_scales {
+        context_scales.push(serde_json::json!([
+            format!("{:X}", context.value()),
+            format!("{:X}", scale.value())
+        ]));
+    }
+    context_scales.sort_by(|a, b| a[0].as_str().cmp(&b[0].as_str()));
+
+    let mut field_definitions = Vec::new();
+    for (handle, field) in &doc.fields {
+        field_definitions.push(serde_json::json!({
+            "handle": format!("{:X}", handle.value()),
+            "value": serde_json::to_value(field)
+                .map_err(to_js("round-trip FIELD snapshot serialize failed"))?
+        }));
+    }
+    field_definitions.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let mut dgn_definitions = Vec::new();
+    for (handle, definition) in &doc.dgn_ls_definitions {
+        dgn_definitions.push(serde_json::json!({
+            "handle": format!("{:X}", handle.value()),
+            "value": serde_json::to_value(definition)
+                .map_err(to_js("round-trip DGN linetype snapshot serialize failed"))?
+        }));
+    }
+    dgn_definitions.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let mut dgn_components = Vec::new();
+    for (handle, component) in &doc.dgn_ls_components {
+        dgn_components.push(serde_json::json!({
+            "handle": format!("{:X}", handle.value()),
+            "value": serde_json::to_value(component)
+                .map_err(to_js("round-trip DGN component snapshot serialize failed"))?
+        }));
+    }
+    dgn_components.sort_by(|a, b| a["handle"].as_str().cmp(&b["handle"].as_str()));
+
+    let vx_control_entries: Vec<String> = doc.vx_control_entries.iter()
+        .map(|handle| format!("{:X}", handle.value())).collect();
+
     Ok(serde_json::json!({
         "entities": entities.into_iter().map(|(_, value)| value).collect::<Vec<_>>(),
         "blockRecords": block_records,
@@ -1709,7 +1784,15 @@ fn document_roundtrip_fingerprint(doc: &CadDocument) -> Result<serde_json::Value
         "opaqueObjects": opaque_objects,
         "objectXdata": object_xdata,
         "dynamicVisibility": visibility,
-        "blockRepresentations": representations
+        "blockRepresentations": representations,
+        "tables": tables,
+        "extensionDictionaryLinks": extension_dictionary_links,
+        "reactorLinks": reactor_links,
+        "contextScales": context_scales,
+        "fieldDefinitions": field_definitions,
+        "dgnLineStyleDefinitions": dgn_definitions,
+        "dgnLineStyleComponents": dgn_components,
+        "vxControlEntries": vx_control_entries
     }))
 }
 
