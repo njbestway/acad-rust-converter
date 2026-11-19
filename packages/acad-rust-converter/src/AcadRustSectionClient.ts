@@ -33,6 +33,8 @@ export interface AcadRustDocumentClient {
   dynamicBlockIndex(handle: number): Promise<AcadRustDynamicBlockIndex>
   /** Inspect the ATTRIB/SEQEND chain for an INSERT. */
   insertSequence(handle: number, insertHandle: string): Promise<AcadRustInsertSequence>
+  /** Save and reopen in Rust, comparing entity/object/relationship fingerprints. */
+  roundtripAudit(handle: number): Promise<AcadRustRoundtripAudit>
   /** One bounded page of model-space entities. */
   entityPage(handle: number, offset: number, limit: number): Promise<AcadRustEntity[]>
   /** Exact hexadecimal handles aligned by index with entityPage(). */
@@ -134,6 +136,24 @@ export interface AcadRustInsertSequence {
   seqendHandle: string | null
   seqendResolved: boolean
   valid: boolean
+}
+
+export interface AcadRustRoundtripAudit {
+  ok: boolean
+  dwgByteLength: number
+  entityCount: number
+  blockRecordCount: number
+  objectCount: number
+  opaqueObjectCount: number
+  entitiesEqual: boolean
+  blockRecordsEqual: boolean
+  objectsEqual: boolean
+  opaqueObjectsEqual: boolean
+  objectXdataEqual: boolean
+  dynamicVisibilityEqual: boolean
+  blockRepresentationsEqual: boolean
+  beforeFingerprint: string
+  afterFingerprint: string
 }
 
 export interface AcadRustCreatedBlockRecord {
@@ -304,6 +324,11 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       section: kind
     })
     return this.parseJson<AcadRustExactHandlePath[]>(result, `section-handle-index:${kind}`)
+  }
+
+  async roundtripAudit(handle: number): Promise<AcadRustRoundtripAudit> {
+    const result = await this.request({ id: 0, kind: 'roundtrip-audit', handle })
+    return this.parseJson<AcadRustRoundtripAudit>(result, 'roundtrip-audit')
   }
 
   async dynamicBlockIndex(handle: number): Promise<AcadRustDynamicBlockIndex> {
