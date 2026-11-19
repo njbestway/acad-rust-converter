@@ -668,6 +668,11 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       const objects = await readSection<AcadRustObjects>('objects')
       await emit(ENTITY_END_PCT, 'OBJECT', 'START')
       mapObjects(db, objects, blockRecords)
+      captureLoadedObjectIdentities(
+        db,
+        sectionHandleIndexes.get('objects'),
+        this.onObjectIdentity
+      )
       await emit(99, 'OBJECT', 'END')
 
       db.endEventBatch()
@@ -1530,6 +1535,30 @@ function wireNamedObjectDictionary(db: AcDbDatabase, table: AcadRustObjects): vo
 }
 
 /**
+ * Bind every OBJECTS record that was actually materialized into MLightCAD's
+ * typed object containers. The section sidecar supplies exact u64 handles;
+ * this deliberately does not fabricate MLightCAD objects for unsupported
+ * acadrust variants.
+ */
+function captureLoadedObjectIdentities(
+  db: AcDbDatabase,
+  handleIndex: AcadRustExactHandlePath[] | undefined,
+  onIdentity?: (objectId: string, dwgHandle: string) => void
+): void {
+  if (!handleIndex || !onIdentity) return
+  const loaded = collectLoadedObjectsByHandle(db)
+  for (const item of handleIndex) {
+    if (item.path[item.path.length - 1] !== 'handle') continue
+    const object = loaded.get(item.handle)
+    if (!object) continue
+    const objectId = object.objectId
+    if (typeof objectId === 'string' && objectId.length > 0) {
+      onIdentity(objectId, item.handle)
+    }
+  }
+}
+
+/**
  * Index every object already resident in the db.objects containers by its
  * object id (mirrors the reader's `collectLoadedObjectsByHandle`): dictionary
  * entries reference objects by handle, so the graph can only be wired after
@@ -1549,6 +1578,7 @@ function collectLoadedObjectsByHandle(db: AcDbDatabase): Map<string, AcDbObject>
     }
   }
   const objects = db.objects
+  add(objects.dictionary)
   for (const dict of [
     objects.layout,
     objects.group,
