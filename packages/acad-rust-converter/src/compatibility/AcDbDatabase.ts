@@ -7,11 +7,14 @@ import {
 } from '../model/acadrust-model'
 import {
   type AcadRustDocumentClient,
-  type AcadRustEntityCommonPatch
+  type AcadRustEntityCommonPatch,
+  type AcadRustCircleArcGeometryPatch
 } from '../AcadRustSectionClient'
 import {
   normalizeDwgHandle,
-  type DwgHandleLike
+  ObjectIdentityMap,
+  type DwgHandleLike,
+  type ObjectIdentityEntry
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
@@ -36,6 +39,9 @@ export type AcDbDatabaseListener = (event: AcDbDatabaseEvent) => void
  */
 export class AcDbDatabase {
   private readonly listeners = new Set<AcDbDatabaseListener>()
+  /** Cross-reference only; the resident Rust CadDocument remains authoritative. */
+  readonly identities = new ObjectIdentityMap()
+  private readonly identitySnapshots: ObjectIdentityMap[] = []
   private closed = false
 
   private constructor(
@@ -71,6 +77,28 @@ export class AcDbDatabase {
     return new AcDbEntity(this, normalizeDwgHandle(handle))
   }
 
+  /** Bind a MLightCAD ObjectId to the exact DWG handle represented by a proxy. */
+  bindObjectIdentity(objectId: string, handle: DwgHandleLike): ObjectIdentityEntry {
+    this.assertOpen()
+    return this.identities.bind(objectId, handle)
+  }
+
+  /** Atomically import identity pairs produced by a converter mapping pass. */
+  bindObjectIdentities(entries: readonly ObjectIdentityEntry[]): void {
+    this.assertOpen()
+    this.identities.bindMany(entries)
+  }
+
+  getHandleForObjectId(objectId: string): string | undefined {
+    this.assertOpen()
+    return this.identities.getHandle(objectId)
+  }
+
+  getObjectIdForHandle(handle: DwgHandleLike): string | undefined {
+    this.assertOpen()
+    return this.identities.getObjectId(handle)
+  }
+
   async addEntity(entity: AcadRustEntity): Promise<AcDbEntity> {
     this.assertOpen()
     const handle = await this.client.addEntity(
@@ -96,18 +124,26 @@ export class AcDbDatabase {
   async beginTransaction(): Promise<void> {
     this.assertOpen()
     await this.client.beginTransaction(this.documentHandle)
+    this.identitySnapshots.push(this.identities.clone())
     this.emit({ type: 'transactionStarted' })
   }
 
   async commitTransaction(): Promise<void> {
     this.assertOpen()
     await this.client.commitTransaction(this.documentHandle)
+    if (this.identitySnapshots.length === 0) {
+      throw new Error('No active identity snapshot for this transaction.')
+    }
+    this.identitySnapshots.pop()
     this.emit({ type: 'transactionCommitted' })
   }
 
   async abortTransaction(): Promise<void> {
     this.assertOpen()
     await this.client.abortTransaction(this.documentHandle)
+    const snapshot = this.identitySnapshots.pop()
+    if (snapshot == null) throw new Error('No active identity snapshot for this transaction.')
+    this.identities.restore(snapshot)
     this.emit({ type: 'transactionAborted' })
   }
 
@@ -134,6 +170,8 @@ export class AcDbDatabase {
     if (this.closed) return
     await this.client.close(this.documentHandle)
     this.closed = true
+    this.identitySnapshots.length = 0
+    this.identities.clear()
     this.listeners.clear()
   }
 
