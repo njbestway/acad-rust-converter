@@ -177,8 +177,12 @@ class FixtureClient implements AcadRustDocumentClient {
     })
   }
 
-  async blockEntityHandles(_handle: number, _blockName: string): Promise<string[]> {
-    return []
+  async blockEntityHandles(_handle: number, blockName: string): Promise<string[]> {
+    return (this.blockPages[blockName] ?? []).map(entity => {
+      const value = Object.values(entity)[0] as any
+      const handle = value?.common?.handle
+      return typeof handle === 'number' ? handle.toString(16).toUpperCase() : String(handle ?? '')
+    })
   }
 
   async getEntity(_handle: number, _entityHandle: string): Promise<any> {
@@ -251,7 +255,10 @@ function tableNames(
 }
 
 /** Read a fixture-driven native database. */
-async function readNative(arg?: any[] | FixtureOptions): Promise<{
+async function readNative(
+  arg?: any[] | FixtureOptions,
+  onObjectIdentity?: (objectId: string, dwgHandle: string) => void
+): Promise<{
   db: AcDbDatabase
   client: FixtureClient
   unknownEntityCount: number
@@ -263,7 +270,7 @@ async function readNative(arg?: any[] | FixtureOptions): Promise<{
   // through their attribute constructors, but keep the working database bound so
   // any event side-effects resolve against it (matches how a host drives read()).
   acdbAssignWorkingDatabase(db)
-  const converter = new AcDbAcadRustNativeConverter({ client })
+  const converter = new AcDbAcadRustNativeConverter({ client, onObjectIdentity })
   // Capture the ENTITY-END stats (unknown count) via the progress callback.
   let unknownEntityCount = -1
   // Slice 0 never touches the bytes (the client replays fixtures), so an empty
@@ -1269,6 +1276,23 @@ describe('AcDbAcadRustNativeConverter block reference mapping (M4.2)', () => {
       .sort()
     // Native block definitions match the fixture set exactly (spaces excluded).
     expect(blockNames(db)).toEqual(expected)
+  })
+
+  it('captures native ObjectId to exact DWG handle identities for model and block entities', async () => {
+    const identities: Array<{ objectId: string; handle: string }> = []
+    await readNative(undefined, (objectId, handle) => identities.push({ objectId, handle }))
+
+    const modelPage = loadJson('entity-page-0.json')
+    const expectedModelHandles = modelPage.map((entity: any) => {
+      const value = Object.values(entity)[0] as any
+      return value.common.handle.toString(16).toUpperCase()
+    })
+    expect(identities.length).toBeGreaterThan(0)
+    for (const handle of expectedModelHandles) {
+      expect(identities.some(entry => entry.handle === handle)).toBe(true)
+    }
+    expect(new Set(identities.map(entry => entry.objectId)).size).toBe(identities.length)
+    expect(new Set(identities.map(entry => entry.handle)).size).toBe(identities.length)
   })
 
   it('maps the model-space INSERTs and resolves each to its block definition', async () => {
