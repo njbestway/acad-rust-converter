@@ -106,6 +106,7 @@ import {
   AcadRustWorkerDocumentClient
 } from './AcadRustSectionClient'
 import type { AcDbAcadRustConverterConfig } from './AcDbAcadRustConverter'
+import type { ObjectIdentityMap } from './compatibility/ObjectIdentityMap'
 import {
   type AcadRustArcPayload,
   type AcadRustAttachmentPoint,
@@ -244,6 +245,8 @@ export interface AcDbAcadRustNativeConverterConfig extends AcDbAcadRustConverter
    * hexadecimal sidecar, never from the lossy JSON number field.
    */
   onObjectIdentity?: (objectId: string, dwgHandle: string) => void
+  /** Optional identity index populated automatically for mapped entities. */
+  identityMap?: ObjectIdentityMap
   /** Optional exact-handle index for every section, preserving u64 references. */
   onSectionHandleIndex?: (kind: AcadRustSectionKind, entries: AcadRustExactHandlePath[]) => void
 }
@@ -288,13 +291,20 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
    */
   private workerClient?: AcadRustWorkerDocumentClient
   private readonly onObjectIdentity?: (objectId: string, dwgHandle: string) => void
+  private readonly identityMap?: ObjectIdentityMap
   private readonly onSectionHandleIndex?: (kind: AcadRustSectionKind, entries: AcadRustExactHandlePath[]) => void
 
   constructor(config?: AcDbAcadRustNativeConverterConfig) {
     super(config)
     this.opts = config ?? {}
     this.injectedClient = config?.client
-    this.onObjectIdentity = config?.onObjectIdentity
+    this.identityMap = config?.identityMap
+    this.onObjectIdentity = config?.identityMap || config?.onObjectIdentity
+      ? (objectId, dwgHandle) => {
+          this.identityMap?.bind(objectId, dwgHandle)
+          config?.onObjectIdentity?.(objectId, dwgHandle)
+        }
+      : undefined
     this.onSectionHandleIndex = config?.onSectionHandleIndex
   }
 
