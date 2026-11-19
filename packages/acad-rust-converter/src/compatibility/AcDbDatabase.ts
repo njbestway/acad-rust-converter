@@ -265,6 +265,46 @@ export class AcDbDatabase {
     return this.client.blockEntityHandles(this.documentHandle, name)
   }
 
+  async readObjectXdata<T = unknown>(handle: AcDbHandle): Promise<T | null> {
+    this.assertOpen()
+    return this.client.objectXdata<T>(this.documentHandle, handle)
+  }
+
+  async setObjectXdataRecord(
+    handle: AcDbHandle,
+    record: unknown
+  ): Promise<void> {
+    this.assertOpen()
+    await this.client.setObjectXdataRecord(this.documentHandle, handle, record)
+  }
+
+  async removeObjectXdataRecord(handle: AcDbHandle, application: string): Promise<boolean> {
+    this.assertOpen()
+    return this.client.removeObjectXdataRecord(this.documentHandle, handle, application)
+  }
+
+  async ensureExtensionDictionary(handle: AcDbHandle): Promise<AcDbHandle> {
+    this.assertOpen()
+    return normalizeDwgHandle(
+      await this.client.ensureExtensionDictionary(this.documentHandle, handle)
+    )
+  }
+
+  async ensureXrecord(handle: AcDbHandle, key: string): Promise<AcDbHandle> {
+    this.assertOpen()
+    return normalizeDwgHandle(await this.client.ensureXrecord(this.documentHandle, handle, key))
+  }
+
+  async readXrecord<T = unknown>(handle: AcDbHandle, key: string): Promise<T | null> {
+    this.assertOpen()
+    return this.client.xrecord<T>(this.documentHandle, handle, key)
+  }
+
+  async setXrecordEntries(handle: AcDbHandle, key: string, entries: unknown[]): Promise<void> {
+    this.assertOpen()
+    await this.client.setXrecordEntries(this.documentHandle, handle, key, entries)
+  }
+
   /** @internal Entity proxy bridge. */
   async readEntity(handle: AcDbHandle): Promise<AcadRustEntity> {
     this.assertOpen()
@@ -373,6 +413,34 @@ export class AcDbEntity {
 
   async erase(): Promise<boolean> {
     return this.database.eraseEntity(this.handle)
+  }
+
+  async getXdata<T = unknown>(): Promise<T | null> {
+    return this.database.readObjectXdata<T>(this.handle)
+  }
+
+  async setXdataRecord(record: unknown): Promise<void> {
+    await this.database.setObjectXdataRecord(this.handle, record)
+  }
+
+  async removeXdataRecord(application: string): Promise<boolean> {
+    return this.database.removeObjectXdataRecord(this.handle, application)
+  }
+
+  async ensureExtensionDictionary(): Promise<AcDbHandle> {
+    return this.database.ensureExtensionDictionary(this.handle)
+  }
+
+  async ensureXrecord(key: string): Promise<AcDbHandle> {
+    return this.database.ensureXrecord(this.handle, key)
+  }
+
+  async getXrecord<T = unknown>(key: string): Promise<T | null> {
+    return this.database.readXrecord<T>(this.handle, key)
+  }
+
+  async setXrecordEntries(key: string, entries: unknown[]): Promise<void> {
+    await this.database.setXrecordEntries(this.handle, key, entries)
   }
 
   private async readCommon<T>(property: string): Promise<T> {
