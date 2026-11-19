@@ -110,7 +110,6 @@ interface WorkerResult {
   handle?: number
   entityHandle?: string
   removed?: boolean
-  json?: string
   /** `open` only: wall time of the wasm `dwg_open` read, measured in-worker. */
   parseMs?: number
 }
