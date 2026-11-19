@@ -19,7 +19,7 @@ import {
 } from './ObjectIdentityMap'
 
 export type AcDbHandle = string
-export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustInsertPlacementPatch
+export type AcDbEntityPatch = AcadRustEntityCommonPatch | { start?: AcadRustPoint3d; end?: AcadRustPoint3d } | AcadRustCircleArcGeometryPatch | AcadRustInsertPlacementPatch | { attributeTag: string; attributeValue: string } | { defaultValue: string }
 
 export type AcDbDatabaseEvent =
   | { type: 'objectAppended'; handle: AcDbHandle; entity: AcDbEntity }
@@ -219,14 +219,14 @@ export class AcDbDatabase {
     this.assertOpen()
     await this.client.updateInsertAttributeValue(this.documentHandle, handle, tag, value)
     const entity = new AcDbEntity(this, handle)
-    this.emit({ type: 'objectModified', handle, entity, patch: { attributeTag: tag, attributeValue: value } as never })
+    this.emit({ type: 'objectModified', handle, entity, patch: { attributeTag: tag, attributeValue: value } })
   }
 
   async patchAttdefDefaultValue(handle: AcDbHandle, value: string): Promise<void> {
     this.assertOpen()
     await this.client.updateAttdefDefaultValue(this.documentHandle, handle, value)
     const entity = new AcDbEntity(this, handle)
-    this.emit({ type: 'objectModified', handle, entity, patch: { defaultValue: value } as never })
+    this.emit({ type: 'objectModified', handle, entity, patch: { defaultValue: value } })
   }
 
   async patchInsertPlacement(
