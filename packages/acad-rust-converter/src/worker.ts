@@ -288,6 +288,13 @@ ctx.addEventListener('message', (event: MessageEvent) => {
             json: dwg_entity_page(handle, request.offset, request.limit)
           })
           break
+        case 'entity-handles-page':
+          ctx.postMessage({
+            type: 'result',
+            id,
+            json: dwg_entity_handle_page_json(handle, request.offset, request.limit)
+          })
+          break
         case 'block-page':
           ctx.postMessage({
             type: 'result',
