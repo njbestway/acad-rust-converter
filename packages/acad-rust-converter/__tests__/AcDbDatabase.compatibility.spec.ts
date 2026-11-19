@@ -186,6 +186,24 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.updateLineGeometry).toHaveBeenCalledWith(7, '2A', { start, end })
   })
 
+  it('isolates listener exceptions from already-committed database mutations', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const observed: string[] = []
+    const failure = new Error('consumer callback failed')
+
+    db.on(() => { throw failure })
+    db.on(event => observed.push(event.type))
+
+    // The Rust mutation succeeds even when an observer is faulty. Rejecting
+    // here would invite callers to retry an operation that already happened.
+    await expect(db.getEntity('2A').setLayer('MECH')).resolves.toBeUndefined()
+    expect(client.updateEntityCommon).toHaveBeenCalledWith(7, '2A', { layer: 'MECH' })
+    expect(observed).toEqual(['objectModified'])
+    expect(db.takeListenerErrors()).toEqual([failure])
+    expect(db.takeListenerErrors()).toEqual([])
+  })
+
   it('routes append, erase, transactions and save to the same resident document', async () => {
     const client = createClient()
     const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
