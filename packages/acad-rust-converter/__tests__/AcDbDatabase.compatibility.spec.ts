@@ -36,6 +36,13 @@ describe('AcDbDatabase compatibility proxies', () => {
       addBlockRecord: jest.fn().mockResolvedValue({ name: 'NEW_BLOCK', handle: '40', blockEntityHandle: '41', blockEndHandle: '42' }),
       addEntityToBlock: jest.fn().mockResolvedValue('43'),
       removeEmptyBlockRecord: jest.fn().mockResolvedValue(true),
+      objectXdata: jest.fn().mockResolvedValue(null),
+      setObjectXdataRecord: jest.fn().mockResolvedValue(undefined),
+      removeObjectXdataRecord: jest.fn().mockResolvedValue(true),
+      ensureExtensionDictionary: jest.fn().mockResolvedValue('44'),
+      ensureXrecord: jest.fn().mockResolvedValue('45'),
+      xrecord: jest.fn().mockResolvedValue({ entries: [] }),
+      setXrecordEntries: jest.fn().mockResolvedValue(undefined),
       removeEntity: jest.fn().mockResolvedValue(true),
       save: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
       beginTransaction: jest.fn().mockResolvedValue(undefined),
@@ -131,6 +138,28 @@ describe('AcDbDatabase compatibility proxies', () => {
       'transactionCommitted',
       'databaseSaved'
     ])
+  })
+
+  it('routes XData and Extension Dictionary operations through Rust handles', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const entity = db.getEntity('2A')
+    const record = {
+      application_name: 'MY_APP',
+      values: [{ String: 'payload' }]
+    }
+
+    await entity.setXdataRecord(record)
+    expect(client.setObjectXdataRecord).toHaveBeenCalledWith(7, '2A', record)
+    expect(await entity.getXdata()).toBeNull()
+    expect(await entity.removeXdataRecord('MY_APP')).toBe(true)
+    expect(await entity.ensureExtensionDictionary()).toBe('44')
+    expect(await entity.ensureXrecord('CUSTOM')).toBe('45')
+    expect(await entity.getXrecord('CUSTOM')).toEqual({ entries: [] })
+
+    const entries = [{ code: 1, value: { String: 'value' } }]
+    await entity.setXrecordEntries('CUSTOM', entries)
+    expect(client.setXrecordEntries).toHaveBeenCalledWith(7, '2A', 'CUSTOM', entries)
   })
 
   it('creates blocks, appends members and delegates safe empty-block removal', async () => {
