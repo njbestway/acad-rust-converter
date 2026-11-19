@@ -628,6 +628,18 @@ export class AcDbEntity {
     await this.database.patchLwPolylineGeometry(this.handle, geometry)
   }
 
+  async insertPolylineVertex(index: number, vertex: import('../AcadRustSectionClient').AcadRustLwPolylineVertex): Promise<void> {
+    await this.setPolylineGeometry({ vertexOperations: [{ op: 'insert', index, vertex }] })
+  }
+
+  async updatePolylineVertex(index: number, vertex: import('../AcadRustSectionClient').AcadRustLwPolylineVertex): Promise<void> {
+    await this.setPolylineGeometry({ vertexOperations: [{ op: 'update', index, vertex }] })
+  }
+
+  async removePolylineVertex(index: number): Promise<void> {
+    await this.setPolylineGeometry({ vertexOperations: [{ op: 'remove', index }] })
+  }
+
   async setLineEndpoints(start: AcadRustPoint3d, end: AcadRustPoint3d): Promise<void> {
     await this.database.patchLineGeometry(this.handle, { start, end })
   }
