@@ -77,6 +77,7 @@ import {
   dwg_update_lwpolyline_geometry_json,
   dwg_update_circle_arc_geometry_json,
   dwg_update_ellipse_geometry_json,
+  dwg_update_spline_geometry_json,
   dwg_update_insert_placement_json,
   dwg_update_insert_attribute_value,
   dwg_update_attdef_default_value,
@@ -156,6 +157,7 @@ type WorkerRequest =
   | { id: number; kind: 'update-lwpolyline'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-circle-arc'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-ellipse'; handle: number; entityHandle: string; geometryJson: string }
+  | { id: number; kind: 'update-spline'; handle: number; entityHandle: string; geometryJson: string }
   | { id: number; kind: 'update-insert-placement'; handle: number; entityHandle: string; patchJson: string }
   | { id: number; kind: 'update-insert-attribute'; handle: number; entityHandle: string; tag: string; value: string }
   | { id: number; kind: 'update-attdef-default'; handle: number; entityHandle: string; value: string }
@@ -555,6 +557,10 @@ ctx.addEventListener('message', (event: MessageEvent) => {
           break
         case 'update-ellipse':
           dwg_update_ellipse_geometry_json(handle, request.entityHandle, request.geometryJson)
+          ctx.postMessage({ type: 'result', id })
+          break
+        case 'update-spline':
+          dwg_update_spline_geometry_json(handle, request.entityHandle, request.geometryJson)
           ctx.postMessage({ type: 'result', id })
           break
         case 'save': {
