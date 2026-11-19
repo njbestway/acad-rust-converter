@@ -421,4 +421,73 @@ describe('AcDbDatabase compatibility proxies', () => {
     expect(client.abortTransaction).toHaveBeenCalledWith(7)
     expect(client.close).toHaveBeenCalledTimes(1)
   })
+  it('reads polyline geometry snapshots through the resident entity proxy', async () => {
+    const client = createClient()
+    client.getEntity.mockResolvedValueOnce({
+      LwPolyline: {
+        common: { handle: 42, layer: '0' },
+        vertices: [
+          { location: { x: 0, y: 0 }, bulge: 0, start_width: 0, end_width: 0, vertex_id: 0 },
+          { location: { x: 10, y: 5 }, bulge: 0.25, start_width: 0, end_width: 0, vertex_id: 1 }
+        ],
+        is_closed: false
+      }
+    } as never)
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const vertices = await db.getEntity('2A').getPolylineVertices()
+    expect(vertices).toHaveLength(2)
+    expect((vertices[1] as { bulge: number }).bulge).toBe(0.25)
+    expect(client.getEntity).toHaveBeenCalledWith(7, '2A')
+  })
+
+  it('reads INSERT payload and validates its ATTRIB/SEQEND sequence', async () => {
+    const client = createClient()
+    client.getEntity.mockResolvedValueOnce({
+      Insert: {
+        common: { handle: 42, layer: '0' },
+        block_header: 99,
+        insertion_point: { x: 1, y: 2, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        rotation: 0
+      }
+    } as never)
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const info = await db.getEntity('2A').getBlockReferenceData()
+    expect(info.kind).toBe('Insert')
+    expect(info.payload.block_header).toBe(99)
+    expect(info.sequence.valid).toBe(true)
+    expect(client.insertSequence).toHaveBeenCalledWith(7, '2A')
+  })
+
+  it('filters dynamic-block graph data for a requested handle', async () => {
+    const client = createClient()
+    client.dynamicBlockIndex.mockResolvedValueOnce({
+      dynamicObjects: [
+        { handle: 'A0', owner: '2A', dxfName: 'BLOCKVISIBILITYPARAMETER', cppClassName: 'AcDbBlockVisibilityParameter', data: {} },
+        { handle: 'B0', owner: 'FF', dxfName: 'OTHER', cppClassName: 'Other', data: {} }
+      ],
+      visibilityParameters: [
+        { handle: 'A1', owner: '2A', name: 'Visibility1', description: '', allBlocks: [], states: [] }
+      ],
+      representations: [
+        { representationHandle: 'A2', dynamicBlockHandle: 'A0' },
+        { representationHandle: 'B2', dynamicBlockHandle: 'B0' }
+      ]
+    })
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    const info = await db.getEntity('2A').getDynamicBlockInfo()
+    expect(info.objects).toHaveLength(1)
+    expect(info.visibilityParameters).toHaveLength(1)
+    expect(info.representations).toHaveLength(1)
+  })
+
+  it('exposes closed lifecycle state and rejects entity reads after close', async () => {
+    const client = createClient()
+    const db = await AcDbDatabase.open(client, new ArrayBuffer(0))
+    expect(db.isClosed).toBe(false)
+    await db.close()
+    expect(db.isClosed).toBe(true)
+    expect(() => db.getEntity('2A')).toThrow('AcDbDatabase is closed')
+  })
+
 })
