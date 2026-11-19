@@ -388,6 +388,53 @@ fn collect_exact_handles(
                         });
                     }
                 }
+
+                // Named arrays below contain DWG handles, not arbitrary numeric
+                // payloads. Preserve each exact u64 with its JSON path.
+                let is_handle_array = matches!(
+                    key.as_str(),
+                    "reactors" | "viewports" | "entities" | "object_references"
+                        | "entity_handles" | "insert_handles" | "hard_owner_entries"
+                        | "handles" | "attribute_handles"
+                );
+                if is_handle_array {
+                    if let Some(items) = child.as_array() {
+                        for (index, item) in items.iter().enumerate() {
+                            if let Some(raw) = item.as_u64() {
+                                path.push(index.to_string());
+                                output.push(ExactHandlePath {
+                                    path: path.clone(),
+                                    handle: format!("{:X}", raw),
+                                });
+                                path.pop();
+                            }
+                        }
+                    }
+                }
+
+                // DICTIONARY.entries is a sequence of [key, Handle] tuples.
+                // XRecord entries are structs and therefore do not match.
+                if key == "entries" {
+                    if let Some(items) = child.as_array() {
+                        for (index, item) in items.iter().enumerate() {
+                            if let Some(pair) = item.as_array() {
+                                if pair.len() == 2 && pair[0].is_string() {
+                                    if let Some(raw) = pair[1].as_u64() {
+                                        path.push(index.to_string());
+                                        path.push("1".to_string());
+                                        output.push(ExactHandlePath {
+                                            path: path.clone(),
+                                            handle: format!("{:X}", raw),
+                                        });
+                                        path.pop();
+                                        path.pop();
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 collect_exact_handles(child, path, output);
                 path.pop();
             }
