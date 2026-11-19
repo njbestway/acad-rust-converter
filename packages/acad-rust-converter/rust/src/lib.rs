@@ -991,6 +991,142 @@ pub fn dwg_update_ellipse_geometry_json(
     })
 }
 
+#[derive(serde::Deserialize, Default)]
+struct SplineFlagsPatch {
+    closed: Option<bool>,
+    periodic: Option<bool>,
+    rational: Option<bool>,
+    planar: Option<bool>,
+    linear: Option<bool>,
+}
+
+#[derive(serde::Deserialize, Default)]
+struct SplineGeometryPatch {
+    degree: Option<i32>,
+    flags: Option<SplineFlagsPatch>,
+    knots: Option<Vec<f64>>,
+    control_points: Option<Vec<Point3Patch>>,
+    weights: Option<Vec<f64>>,
+    fit_points: Option<Vec<Point3Patch>>,
+    normal: Option<Point3Patch>,
+    knot_tolerance: Option<f64>,
+    control_tolerance: Option<f64>,
+    fit_tolerance: Option<f64>,
+    begin_tangent: Option<Point3Patch>,
+    end_tangent: Option<Point3Patch>,
+    knot_parameterization: Option<i32>,
+    cv_frame_visible: Option<bool>,
+    dwg_flags1: Option<i32>,
+}
+
+/// Apply a complete typed NURBS patch to the resident Spline. Work on cloned
+/// candidate fields first, so malformed arrays cannot leave a half-edited curve.
+#[wasm_bindgen]
+pub fn dwg_update_spline_geometry_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    geometry_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: SplineGeometryPatch = serde_json::from_str(geometry_json)
+            .map_err(to_js("SPLINE geometry patch JSON parse failed"))?;
+        let valid_point = |p: &Point3Patch| [p.x, p.y, p.z].iter().all(|v| v.is_finite());
+        for points in [patch.control_points.as_ref(), patch.fit_points.as_ref()].into_iter().flatten() {
+            if points.iter().any(|p| !valid_point(p)) {
+                return Err(JsValue::from_str("SPLINE point coordinates must be finite."));
+            }
+        }
+        for point in [patch.normal.as_ref(), patch.begin_tangent.as_ref(), patch.end_tangent.as_ref()].into_iter().flatten() {
+            if !valid_point(point) {
+                return Err(JsValue::from_str("SPLINE vector values must be finite."));
+            }
+        }
+        for values in [patch.knots.as_ref(), patch.weights.as_ref()].into_iter().flatten() {
+            if values.iter().any(|v| !v.is_finite()) {
+                return Err(JsValue::from_str("SPLINE knots and weights must be finite."));
+            }
+        }
+        for value in [patch.knot_tolerance, patch.control_tolerance, patch.fit_tolerance].into_iter().flatten() {
+            if !value.is_finite() || value < 0.0 {
+                return Err(JsValue::from_str("SPLINE tolerances must be finite and non-negative."));
+            }
+        }
+        if patch.degree.is_some_and(|degree| degree < 1) {
+            return Err(JsValue::from_str("SPLINE degree must be at least 1."));
+        }
+
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            let spline = match entity {
+                acadrust::EntityType::Spline(spline) => spline,
+                _ => return Err(JsValue::from_str("The target entity is not a SPLINE.")),
+            };
+
+            let mut degree = spline.degree;
+            let mut flags = spline.flags;
+            let mut knots = spline.knots.clone();
+            let mut control_points = spline.control_points.clone();
+            let mut weights = spline.weights.clone();
+            let mut fit_points = spline.fit_points.clone();
+            if let Some(value) = patch.degree { degree = value; }
+            if let Some(update) = patch.flags {
+                if let Some(value) = update.closed { flags.closed = value; }
+                if let Some(value) = update.periodic { flags.periodic = value; }
+                if let Some(value) = update.rational { flags.rational = value; }
+                if let Some(value) = update.planar { flags.planar = value; }
+                if let Some(value) = update.linear { flags.linear = value; }
+            }
+            if let Some(values) = patch.knots { knots = values; }
+            if let Some(values) = patch.control_points {
+                control_points = values.into_iter().map(|p| acadrust::types::Vector3::new(p.x, p.y, p.z)).collect();
+            }
+            if let Some(values) = patch.weights { weights = values; }
+            if let Some(values) = patch.fit_points {
+                fit_points = values.into_iter().map(|p| acadrust::types::Vector3::new(p.x, p.y, p.z)).collect();
+            }
+
+            if !knots.windows(2).all(|pair| pair[0] <= pair[1]) {
+                return Err(JsValue::from_str("SPLINE knot values must be non-decreasing."));
+            }
+            let geometry_arrays_changed = patch.degree.is_some()
+                || patch.knots.is_some()
+                || patch.control_points.is_some()
+                || patch.weights.is_some()
+                || patch.flags.as_ref().is_some_and(|f| f.rational.is_some());
+            if geometry_arrays_changed && !control_points.is_empty() {
+                if !knots.is_empty() && knots.len() != control_points.len() + degree as usize + 1 {
+                    return Err(JsValue::from_str("SPLINE knot count must equal control-point count + degree + 1."));
+                }
+                if !weights.is_empty() && weights.len() != control_points.len() {
+                    return Err(JsValue::from_str("SPLINE weight count must equal control-point count."));
+                }
+                if flags.rational && weights.len() != control_points.len() {
+                    return Err(JsValue::from_str("A rational SPLINE requires one weight per control point."));
+                }
+            }
+
+            spline.degree = degree;
+            spline.flags = flags;
+            spline.knots = knots;
+            spline.control_points = control_points;
+            spline.weights = weights;
+            spline.fit_points = fit_points;
+            if let Some(p) = patch.normal { spline.normal = acadrust::types::Vector3::new(p.x, p.y, p.z); }
+            if let Some(v) = patch.knot_tolerance { spline.knot_tolerance = v; }
+            if let Some(v) = patch.control_tolerance { spline.control_tolerance = v; }
+            if let Some(v) = patch.fit_tolerance { spline.fit_tolerance = v; }
+            if let Some(p) = patch.begin_tangent { spline.begin_tangent = acadrust::types::Vector3::new(p.x, p.y, p.z); }
+            if let Some(p) = patch.end_tangent { spline.end_tangent = acadrust::types::Vector3::new(p.x, p.y, p.z); }
+            if let Some(v) = patch.knot_parameterization { spline.knot_parameterization = v; }
+            if let Some(v) = patch.cv_frame_visible { spline.cv_frame_visible = v; }
+            if let Some(v) = patch.dwg_flags1 { spline.dwg_flags1 = v; }
+            Ok(())
+        })
+    })
+}
+
 //// Create a structurally complete BLOCK definition (BLOCK-RECORD, BLOCK,
 /// ENDBLK) in the resident document. Entity membership remains empty until
 /// dwg_add_entity_to_block_json is called.
