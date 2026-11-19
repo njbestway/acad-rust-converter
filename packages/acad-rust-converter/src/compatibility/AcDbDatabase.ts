@@ -644,11 +644,6 @@ export class AcDbEntity {
     return this.readCommon<unknown>('transparency')
   }
 
-  async getOwnerHandle(): Promise<string | null> {
-    const owner = await this.readCommon<unknown>('owner_handle')
-    return owner == null ? null : normalizeDwgHandle(owner as DwgHandleLike)
-  }
-
   async getReactors(): Promise<unknown[]> {
     const reactors = await this.readCommon<unknown>('reactors')
     return Array.isArray(reactors) ? reactors : []
