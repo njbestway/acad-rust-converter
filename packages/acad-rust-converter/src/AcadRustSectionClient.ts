@@ -45,7 +45,16 @@ export interface AcadRustDocumentClient {
     blockNames: string[]
   ): Promise<AcadRustBlockEntityGroup[]>
   /** Release the resident document behind `handle`. */
-  close(handle: number): Promise<void>
+  /** Add one acadrust EntityType to model space; returns its lossless hex handle. */
+  addEntity(handle: number, entityJson: string): Promise<string>
+  /** Remove an entity by its lossless hexadecimal DWG handle. */
+  removeEntity(handle: number, entityHandle: string): Promise<boolean>
+  /** Native DWG serialization of the current resident document. */
+  save(handle: number): Promise<ArrayBuffer>
+  beginTransaction(handle: number): Promise<void>
+  commitTransaction(handle: number): Promise<void>
+  abortTransaction(handle: number): Promise<void>
+    close(handle: number): Promise<void>
   /** Tear down any transport (worker) resources; safe to call more than once. */
   dispose(): void
 }
@@ -61,7 +70,10 @@ interface AcadRustWorkerResult {
   type: 'result'
   id: number
   dxf?: ArrayBuffer
+  dwg?: ArrayBuffer
   handle?: number
+  entityHandle?: string
+  removed?: boolean
   json?: string
   /** `open` only: wall time of the wasm `dwg_open` read, measured in-worker. */
   parseMs?: number
@@ -215,6 +227,35 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
       result,
       'block-entities-batch'
     )
+  }
+
+  async addEntity(handle: number, entityJson: string): Promise<string> {
+    const result = await this.request({ id: 0, kind: 'add-entity', handle, entityJson })
+    if (result.entityHandle == null) throw new Error('acad-rust worker returned no entity handle.')
+    return result.entityHandle
+  }
+
+  async removeEntity(handle: number, entityHandle: string): Promise<boolean> {
+    const result = await this.request({ id: 0, kind: 'remove-entity', handle, entityHandle })
+    return result.removed === true
+  }
+
+  async save(handle: number): Promise<ArrayBuffer> {
+    const result = await this.request({ id: 0, kind: 'save', handle })
+    if (result.dwg == null) throw new Error('acad-rust worker returned no DWG bytes.')
+    return result.dwg
+  }
+
+  async beginTransaction(handle: number): Promise<void> {
+    await this.request({ id: 0, kind: 'begin-transaction', handle })
+  }
+
+  async commitTransaction(handle: number): Promise<void> {
+    await this.request({ id: 0, kind: 'commit-transaction', handle })
+  }
+
+  async abortTransaction(handle: number): Promise<void> {
+    await this.request({ id: 0, kind: 'abort-transaction', handle })
   }
 
   async close(handle: number): Promise<void> {
