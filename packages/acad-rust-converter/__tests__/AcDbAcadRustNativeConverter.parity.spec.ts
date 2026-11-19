@@ -139,7 +139,22 @@ class FixtureClient implements AcadRustDocumentClient {
     return loadJson(`${kind}.json`) as T
   }
 
-   async sectionHandleIndex(_handle: number, kind: AcadRustSectionKind): Promise<any[]> {
+   async dynamicBlockIndex(): Promise<any> {
+    return { dynamicObjects: [], visibilityParameters: [], representations: [] }
+  }
+
+  async insertSequence(_handle: number, insertHandle: string): Promise<any> {
+    return {
+      insertHandle,
+      blockName: 'FIXTURE',
+      attributes: [],
+      seqendHandle: null,
+      seqendResolved: false,
+      valid: true
+    }
+  }
+
+  async sectionHandleIndex(_handle: number, kind: AcadRustSectionKind): Promise<any[]> {
     const section = await this.section<any>(_handle, kind)
     const result: Array<{ path: string[]; handle: string }> = []
     const visit = (value: any, path: string[]): void => {
@@ -155,6 +170,33 @@ class FixtureClient implements AcadRustDocumentClient {
           key === 'block_entity' || key === 'block_end'
         if (isHandle && typeof child === 'number' && Number.isSafeInteger(child) && child > 0) {
           result.push({ path: next, handle: child.toString(16).toUpperCase() })
+        }
+        const handleArrays = new Set([
+          'reactors', 'viewports', 'entities', 'object_references',
+          'entity_handles', 'insert_handles', 'hard_owner_entries',
+          'handles', 'attribute_handles'
+        ])
+        if (handleArrays.has(key) && Array.isArray(child)) {
+          child.forEach((item, index) => {
+            if (typeof item === 'number' && Number.isSafeInteger(item) && item > 0) {
+              result.push({
+                path: [...next, String(index)],
+                handle: item.toString(16).toUpperCase()
+              })
+            }
+          })
+        }
+        if (key === 'entries' && Array.isArray(child)) {
+          child.forEach((item, index) => {
+            if (Array.isArray(item) && item.length === 2 &&
+                typeof item[0] === 'string' && typeof item[1] === 'number' &&
+                Number.isSafeInteger(item[1]) && item[1] > 0) {
+              result.push({
+                path: [...next, String(index), '1'],
+                handle: item[1].toString(16).toUpperCase()
+              })
+            }
+          })
         }
         visit(child, next)
       }
