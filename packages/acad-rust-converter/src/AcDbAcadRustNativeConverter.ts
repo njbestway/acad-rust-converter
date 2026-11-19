@@ -342,14 +342,14 @@ export class AcDbAcadRustNativeConverter extends AcDbDatabaseConverter<null> {
       const activeDocumentHandle = handle
       const sectionHandleIndexes = new Map<AcadRustSectionKind, AcadRustExactHandlePath[]>()
       const readSection = async <T>(kind: AcadRustSectionKind): Promise<T> => {
-        if (!this.onSectionHandleIndex) {
+        if (!this.onSectionHandleIndex && !this.identityMap) {
           return client.section<T>(activeDocumentHandle, kind)
         }
         const [section, handleIndex] = await Promise.all([
           client.section<T>(activeDocumentHandle, kind),
           client.sectionHandleIndex(activeDocumentHandle, kind)
         ])
-        this.onSectionHandleIndex(kind, handleIndex)
+        this.onSectionHandleIndex?.(kind, handleIndex)
         sectionHandleIndexes.set(kind, handleIndex)
         return section
       }
