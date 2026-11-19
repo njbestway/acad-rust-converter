@@ -2,7 +2,8 @@ import {
   ACADRUST_SECTION_KINDS,
   type AcadRustEntity,
   type AcadRustMeta,
-  type AcadRustSectionKind
+  type AcadRustSectionKind,
+  type AcadRustPoint3d
 } from './model/acadrust-model'
 
 /**
@@ -50,6 +51,8 @@ export interface AcadRustDocumentClient {
   addEntity(handle: number, entityJson: string): Promise<string>
   /** Read one entity by its lossless hexadecimal DWG handle. */
   getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity>
+  /** Typed geometry update for LINE endpoints; leaves all reference fields untouched. */
+  updateLineGeometry(handle: number, entityHandle: string, geometry: { start?: AcadRustPoint3d; end?: AcadRustPoint3d }): Promise<void>
   /** Patch reference-safe common properties without round-tripping embedded handles. */
   updateEntityCommon(handle: number, entityHandle: string, patch: AcadRustEntityCommonPatch): Promise<void>
   /** Remove an entity by its lossless hexadecimal DWG handle. */
@@ -255,6 +258,20 @@ export class AcadRustWorkerDocumentClient implements AcadRustDocumentClient {
   async getEntity(handle: number, entityHandle: string): Promise<AcadRustEntity> {
     const result = await this.request({ id: 0, kind: 'get-entity', handle, entityHandle })
     return this.parseJson<AcadRustEntity>(result, 'entity')
+  }
+
+  async updateLineGeometry(
+    handle: number,
+    entityHandle: string,
+    geometry: { start?: AcadRustPoint3d; end?: AcadRustPoint3d }
+  ): Promise<void> {
+    await this.request({
+      id: 0,
+      kind: 'update-line',
+      handle,
+      entityHandle,
+      geometryJson: JSON.stringify(geometry)
+    })
   }
 
   async updateEntityCommon(
