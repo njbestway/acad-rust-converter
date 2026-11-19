@@ -1930,7 +1930,7 @@ function captureTableIdentities(
     if (entry.path.length !== 3 || entry.path[0] !== 'entries' || entry.path[2] !== 'handle') {
       continue
     }
-    const name = entry.path[1].split('\\0')[0].toUpperCase()
+    const name = entry.path[1].split('\0')[0].toUpperCase()
     if (/^[0-9A-F]+$/.test(entry.handle)) handleByName.set(name, entry.handle)
   }
   for (const record of table.newIterator()) {
