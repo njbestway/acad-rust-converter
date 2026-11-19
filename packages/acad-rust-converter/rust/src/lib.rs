@@ -584,6 +584,71 @@ pub fn dwg_update_line_geometry_json(
     })
 }
 
+#[derive(serde::Deserialize)]
+struct CircleArcGeometryPatch {
+    center: Option<Point3Patch>,
+    radius: Option<f64>,
+    start_angle: Option<f64>,
+    end_angle: Option<f64>,
+}
+
+/// Typed CIRCLE/ARC geometry patch. Mutates geometry in-place so handle,
+/// owner, reactors, XData and extension-dictionary links are never round-tripped
+/// through JavaScript JSON numbers.
+#[wasm_bindgen]
+pub fn dwg_update_circle_arc_geometry_json(
+    handle: u32,
+    entity_handle_hex: &str,
+    geometry_json: &str,
+) -> Result<(), JsValue> {
+    guard(|| {
+        let entity_handle = parse_handle_hex(entity_handle_hex)?;
+        let patch: CircleArcGeometryPatch = serde_json::from_str(geometry_json)
+            .map_err(to_js("circle/arc geometry patch JSON parse failed"))?;
+        if let Some(center) = patch.center.as_ref() {
+            if !center.x.is_finite() || !center.y.is_finite() || !center.z.is_finite() {
+                return Err(JsValue::from_str("CIRCLE/ARC center coordinates must be finite."));
+            }
+        }
+        if let Some(radius) = patch.radius {
+            if !radius.is_finite() || radius <= 0.0 {
+                return Err(JsValue::from_str("CIRCLE/ARC radius must be finite and greater than zero."));
+            }
+        }
+        for angle in [patch.start_angle, patch.end_angle].into_iter().flatten() {
+            if !angle.is_finite() {
+                return Err(JsValue::from_str("ARC angles must be finite."));
+            }
+        }
+        with_document_mut(handle, |doc| {
+            let entity = doc.get_entity_mut(entity_handle)
+                .ok_or_else(|| JsValue::from_str("DWG entity handle was not found."))?;
+            match entity {
+                acadrust::EntityType::Circle(circle) => {
+                    if patch.start_angle.is_some() || patch.end_angle.is_some() {
+                        return Err(JsValue::from_str("CIRCLE does not have start/end angles."));
+                    }
+                    if let Some(center) = patch.center {
+                        circle.center = acadrust::types::Vector3::new(center.x, center.y, center.z);
+                    }
+                    if let Some(radius) = patch.radius { circle.radius = radius; }
+                    Ok(())
+                }
+                acadrust::EntityType::Arc(arc) => {
+                    if let Some(center) = patch.center {
+                        arc.center = acadrust::types::Vector3::new(center.x, center.y, center.z);
+                    }
+                    if let Some(radius) = patch.radius { arc.radius = radius; }
+                    if let Some(start_angle) = patch.start_angle { arc.start_angle = start_angle; }
+                    if let Some(end_angle) = patch.end_angle { arc.end_angle = end_angle; }
+                    Ok(())
+                }
+                _ => Err(JsValue::from_str("Entity is neither CIRCLE nor ARC.")),
+            }
+        })
+    })
+}
+
 /// Update only reference-safe common properties. Geometry and handle-bearing
 /// fields are deliberately excluded from this patch protocol so JS number
 /// precision cannot corrupt embedded u64 references.
