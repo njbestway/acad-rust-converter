@@ -884,6 +884,14 @@ pub fn dwg_set_object_xdata_record_json(
             return Err(JsValue::from_str("XDATA application name cannot be empty."));
         }
         with_document_mut(handle, |doc| {
+            if !document_has_handle(doc, object_handle) {
+                return Err(JsValue::from_str("XDATA owner handle does not resolve."));
+            }
+            if !doc.app_ids.contains(&record.application_name) {
+                let mut app = acadrust::AppId::new(&record.application_name);
+                app.set_handle(doc.allocate_handle());
+                doc.app_ids.add(app).map_err(to_js("XDATA APPID creation failed"))?;
+            }
             doc.set_object_xdata_record(object_handle, record);
             Ok(())
         })
@@ -914,6 +922,9 @@ pub fn dwg_ensure_extension_dictionary(
     guard(|| {
         let owner = parse_handle_hex(owner_handle_hex)?;
         with_document_mut(handle, |doc| {
+            if !document_has_handle(doc, owner) {
+                return Err(JsValue::from_str("Extension Dictionary owner handle does not resolve."));
+            }
             let dictionary = doc.ensure_extension_dictionary(owner);
             Ok(format!("{:X}", dictionary.value()))
         })
@@ -933,6 +944,9 @@ pub fn dwg_ensure_xrecord(
             return Err(JsValue::from_str("XRecord key cannot be empty."));
         }
         with_document_mut(handle, |doc| {
+            if !document_has_handle(doc, owner) {
+                return Err(JsValue::from_str("XRecord owner handle does not resolve."));
+            }
             let record = doc.ensure_xrecord(owner, key);
             Ok(format!("{:X}", record.value()))
         })
