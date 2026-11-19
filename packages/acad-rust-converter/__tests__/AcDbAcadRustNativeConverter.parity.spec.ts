@@ -169,6 +169,7 @@ class FixtureClient implements AcadRustDocumentClient {
 
   async addEntityToBlock(): Promise<string> { return '13' }
   async removeEmptyBlockRecord(): Promise<boolean> { return true }
+  async moveEntityToBlock(): Promise<void> {}
   async objectXdata(): Promise<null> { return null }
   async setObjectXdataRecord(): Promise<void> {}
   async removeObjectXdataRecord(): Promise<boolean> { return false }
